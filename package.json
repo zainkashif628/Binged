@@ -1,0 +1,20 @@
+{
+  "name": "movie-playlist-site",
+  "version": "1.0.0",
+  "description": "Movie playlist recommendation system with AI",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site/issues"
+  },
+  "homepage": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site#readme"
+}
