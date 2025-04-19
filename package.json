@@ -16,5 +16,8 @@
   "bugs": {
     "url": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site/issues"
   },
-  "homepage": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site#readme"
+  "homepage": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site#readme",
+  "dependencies": {
+    "dotenv": "^16.5.0"
+  }
 }

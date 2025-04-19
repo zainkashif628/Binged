@@ -10,6 +10,7 @@ yarn-error.log
 *.pyd
 __pycache__/
 venv/
+win-env./
 env/
 *.log
 
@@ -28,3 +29,6 @@ Thumbs.db
 .dockerignore
 Dockerfile
 docker-compose.yml
+
+# Environment variables
+.env
