@@ -16,5 +16,17 @@
   "bugs": {
     "url": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site/issues"
   },
-  "homepage": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site#readme"
+  "homepage": "https://github.com/fatima-tuz-zahra-123/Movie-Playlist-Site#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "axios": "^1.8.4",
+    "dotenv": "^16.5.0",
+    "react-router-dom": "^7.5.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.4"
+  }
 }
