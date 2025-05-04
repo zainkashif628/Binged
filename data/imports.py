@@ -1,12 +1,12 @@
+import traceback
 import requests
 import time
 import os
-import random
 import logging
+import pickle
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from supabase import create_client, Client
-from tempfile import NamedTemporaryFile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv() # load env variables from .env file
@@ -21,7 +21,6 @@ logging.basicConfig(
     format=log_format,
     handlers=[
         logging.FileHandler("movie_import.log", encoding="utf-8"),
-        logging.StreamHandler()
     ]
 )
 
@@ -33,7 +32,6 @@ SUPABASE_API_KEY = os.getenv("SUPABASE_API_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_API_KEY)
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 
-inserted_members = set()
 genders = {
     0: "unknown",
     1: 'female',
@@ -41,12 +39,18 @@ genders = {
 }
 
 movie_batch = []
-movie_genres_batch = []
 crew_members_batch = []
-movie_actors_batch = []
+movie_genres_batch_set = set()
+movie_actors_batch_set = set()
+
+res = supabase.table("language").select("lang_id").execute()
+existing_languages = set(row["lang_id"] for row in res.data)
+
+res = supabase.table("crew_member").select("member_id").execute()
+inserted_members = set(row["member_id"] for row in res.data)
 
 def fetch_movie_details(movie_id):
-    time.sleep(random.randrange(10, 1000) / 1000)  # random sleep to avoid hitting API rate limits
+    time.sleep(0.01)  # random sleep to avoid hitting API rate limits
     url = f"{TMDB_BASE_URL}/movie/{movie_id}?api_key={TMDB_API_KEY}&append_to_response=videos"
     res = requests.get(url)
     return res.json() if res.status_code == 200 else None
@@ -78,7 +82,7 @@ def insert_movie_with_retry(movie_id):
     while True:
         try:
             movie = fetch_movie_details(movie_id)
-            print(f"movie: {movie["id"]}")
+            # print(f"movie: {movie["id"]}")
             if not movie:
                 logging.error(f"Couldn't fetch details for {movie_id}")
                 return
@@ -87,23 +91,20 @@ def insert_movie_with_retry(movie_id):
             if not credits:
                 logging.error(f"Couldn't fetch credits for {movie_id}")
                 return
-            print(f"credits gotten")
+            # print(f"credits gotten")
 
             trailer_key = None
             retry_count = 0
-            max_retries = 3
+            max_retries = 2
             while trailer_key is None and retry_count < max_retries:
                 for video in movie.get("videos", {}).get("results", []):
                     if video["site"] == "YouTube" and video["type"] == "Trailer":
                         trailer_key = video["key"]
                         break
                 if trailer_key is None:
-                    logging.error(f"No trailer key for {movie_id}, retrying fetch ({retry_count+1})...")
                     time.sleep(0.1)
                     movie = fetch_movie_details(movie_id)
                     retry_count += 1
-
-            print(f"trailer_key: {trailer_key}")
 
             rating = get_movie_certification(movie_id)
 
@@ -129,19 +130,20 @@ def insert_movie_with_retry(movie_id):
                 movie_data["release_date"] = None
             if movie_data["lang_id"] == "cn":
                 movie_data["lang_id"] = "zh"
-            
+            if movie_data["lang_id"] == "sh":
+                movie_data["lang_id"] = "sr"
+            if movie_data["lang_id"] not in existing_languages:
+                movie_data["lang_id"] = "en"            
             movie_batch.append(movie_data)
 
-            print("after supabase insert")
+            # print("after supabase insert")
             # insert genres
             for genre in movie.get("genres", []):
-                movie_genres_batch.append({
-                    "movie_id": movie["id"],
-                    "genre_id": genre["id"]
-                })
-            print("after genre insert")
+                movie_genres_batch_set.add((movie["id"], genre["id"]))
+
+            # print("after genre insert")
             # insert cast members
-            for cast_member in credits.get("cast", [])[:20]:  # limit top 20 actors
+            for cast_member in credits.get("cast", [])[:50]:  # limit top 20 actors
                 actor_id = cast_member["id"]
                 if actor_id not in inserted_members:
                     person = fetch_person(actor_id)
@@ -159,13 +161,12 @@ def insert_movie_with_retry(movie_id):
                             "gender": genders.get(person.get("gender", 0), "unknown")
                         }
                         crew_members_batch.append(crew_data)
-                        inserted_members.add(actor_id)
-                # insert into movie-actor
-                movie_actors_batch.append({
-                    "movie_id": movie["id"],
-                    "actor_id": actor_id
-                })
-            print("after cast insert")
+                        movie_actors_batch_set.add((movie["id"], actor_id))
+                else:
+                    # insert into movie-actor
+                    movie_actors_batch_set.add((movie["id"], actor_id))
+
+            # print("after cast insert")
             # insert director
             for crew_member in credits.get("crew", []):
                 if crew_member.get("job") == "Director":
@@ -186,70 +187,122 @@ def insert_movie_with_retry(movie_id):
                                 "gender": genders.get(person.get("gender", 0), "unknown")
                             }
                             crew_members_batch.append(crew_data)
-                            inserted_members.add(director_id)
+                            movie_actors_batch_set.add((movie["id"], director_id))
 
-                    # insert into movie-actor
-                    movie_actors_batch.append({
-                        "movie_id": movie["id"],
-                        "actor_id": director_id
-                    })
+                    else:
+                        # insert into movie-actor
+                        movie_actors_batch_set.add((movie["id"], director_id))
+
                     break
-            print("after director insert")
+            # print("after director insert")
             break  # finished successfully
         except Exception as e:
             logging.error(f"Network error movie {movie_id}, retrying... ({str(e)})")
             time.sleep(0.1)
 
 def flush_batches():
-    global movie_batch, movie_genres_batch, crew_members_batch, movie_actors_batch
+    global movie_batch, movie_genres_batch_set, crew_members_batch, movie_actors_batch_set
     try:
+        # movie table: unique on movie_id
         if movie_batch:
-            supabase.table("movie").upsert(movie_batch).execute()
-        if movie_genres_batch:
-            supabase.table("movie_genre").upsert(movie_genres_batch).execute()
+            unique_movies = {m["movie_id"]: m for m in movie_batch}.values()
+            supabase.table("movie").upsert(list(unique_movies)).execute()
+
+        # movie_genre table: unique on (movie_id, genre_id)
+        if movie_genres_batch_set:
+            unique_movie_genres = list({(m, g) for m, g in movie_genres_batch_set})
+            supabase.table("movie_genre").upsert(
+                [{"movie_id": m, "genre_id": g} for m, g in unique_movie_genres]
+            ).execute()
+
+        # crew_member table: unique on member_id
         if crew_members_batch:
-            supabase.table("crew_member").upsert(crew_members_batch).execute()
-        if movie_actors_batch:
-            supabase.table("movie_actor").upsert(movie_actors_batch).execute()
+            unique_crew = {c["member_id"]: c for c in crew_members_batch}.values()
+            supabase.table("crew_member").upsert(list(unique_crew)).execute()
+            for crew in unique_crew:
+                inserted_members.add(crew["member_id"])  # update after confirmed insert
+
+        # movie_actor table: unique on (movie_id, actor_id)
+        existing_member_ids = inserted_members
+        unique_movie_actors = [
+            {"movie_id": m, "actor_id": a}
+            for m, a in movie_actors_batch_set
+            if a in existing_member_ids
+        ]
+        if unique_movie_actors:
+            supabase.table("movie_actor").upsert(unique_movie_actors).execute()
+
     except Exception as e:
         logging.error(f"Error flushing batches: {str(e)}")
     finally:
         movie_batch.clear()
-        movie_genres_batch.clear()
+        movie_genres_batch_set.clear()
         crew_members_batch.clear()
-        movie_actors_batch.clear()
+        movie_actors_batch_set.clear()
+
 
 def main():
-    with open("progress.txt") as f:
-        page = int(f.read())
-    max_pages = page + 5
-    max_workers = 5  # number of threads to use for concurrent requests
-    start_time = time.time()
-    while page <= max_pages:
-        elapsed_time = time.time() - start_time
+    global inserted_members, movie_genres_batch_set, movie_actors_batch_set
+    with open("progress.pkl", "rb") as f:
+        data = pickle.load(f)
+        year = data["year"]
+        page = data["page"]
+        movie_genres_batch_set = data["movie_genres_batch_set"]
+        movie_actors_batch_set = data["movie_actors_batch_set"]
+
+
+    print(f"Starting from year {year}, page {page}")
+    min_year = 1990
+    max_workers = 5
+
+    while year >= min_year:
+        if page > 100:
+            year -= 1
+            page = 1
+            continue
         try:
-            res = requests.get(f"{TMDB_BASE_URL}/movie/popular?api_key={TMDB_API_KEY}&page={page}")
+            res = requests.get(
+                f"{TMDB_BASE_URL}/discover/movie",
+                params={
+                    "api_key": TMDB_API_KEY,
+                    "primary_release_year": year,
+                    "sort_by": "popularity.desc",
+                    "page": page,
+                    "include_adult": False
+                }
+            )
             if res.status_code != 200:
-                logging.error(f"Failed to fetch page {page}")
-                break
+                logging.error(f"Failed to fetch year {year}, page {page}")
+                continue
+
             results = res.json().get("results", [])
+            if not results:
+                year -= 1
+                page = 1
+                continue
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                print("here")
                 futures = [executor.submit(insert_movie_with_retry, movie["id"]) for movie in results]
                 for future in as_completed(futures):
                     future.result()
 
-            
             flush_batches()
-
             page += 1
-            with open("progress.txt", "w") as f:
-                f.write(str(page))
-            logging.warning(f"page: {page} in progress")
+
+            with open("progress.pkl", "wb") as f:
+                pickle.dump({
+                    "year": year,
+                    "page": page,
+                    "inserted_members": inserted_members,
+                    "movie_genres_batch_set": movie_genres_batch_set,
+                    "movie_actors_batch_set": movie_actors_batch_set
+                }, f)
+            logging.warning(f"Year {year}, Page {page} in progress")
+
         except Exception as e:
-            logging.warning(f"Error fetching page {page}, retrying... ({e})")
+            logging.warning(f"Error fetching year {year}, page {page}, retrying... ({e})\n{traceback.format_exc()}")
             time.sleep(0.1)
+
 
 if __name__ == "__main__":
     main()
