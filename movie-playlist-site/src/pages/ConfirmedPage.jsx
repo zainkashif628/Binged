@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
+import { supabase } from '../services/supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function ConfirmedPage() {

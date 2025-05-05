@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signUpWithEmail } from './signUp.js';
+import { signUpWithEmail } from '../services/signUp.js';
 
 export default function SignupForm() {
   const [formData, setFormData] = useState({

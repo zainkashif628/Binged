@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import SignupForm from './SignUpForm.jsx';
-import ConfirmedPage from './ConfirmedPage.jsx'; // create this file as shown before
+import SignupForm from './components/SignUpForm.jsx';
+import ConfirmedPage from './pages/ConfirmedPage.jsx'; // create this file as shown before
 
 function App() {
   return (

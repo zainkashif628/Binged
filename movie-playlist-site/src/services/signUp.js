@@ -6,7 +6,7 @@ export async function signUpWithEmail({ email, password, fullName, username, gen
     email,
     password,
     options: {
-      emailRedirectTo: 'http://localhost:5173/confirmed', // ✅ Add this line
+      emailRedirectTo: 'http://localhost:3000/confirmed', // ✅ Add this line
       data: {
         full_name: fullName,
         username,
