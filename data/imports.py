@@ -252,11 +252,13 @@ def main():
 
 
     print(f"Starting from year {year}, page {page}")
-    min_year = 1990
+    min_year = 1940
+    max_pages = 10
     max_workers = 5
-
+    
     while year >= min_year:
-        if page > 100:
+        print(f"year: {year}, page: {page}")
+        if page > max_pages:
             year -= 1
             page = 1
             continue
@@ -271,6 +273,7 @@ def main():
                     "include_adult": False
                 }
             )
+            print(f"res: {res}")
             if res.status_code != 200:
                 logging.error(f"Failed to fetch year {year}, page {page}")
                 continue
@@ -280,10 +283,11 @@ def main():
                 year -= 1
                 page = 1
                 continue
-
+            print(f"result agaya")
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(insert_movie_with_retry, movie["id"]) for movie in results]
                 for future in as_completed(futures):
+                    print("some future")
                     future.result()
 
             flush_batches()
