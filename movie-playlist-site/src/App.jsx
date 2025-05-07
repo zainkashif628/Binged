@@ -1,65 +1,54 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import ConfirmedPage from './pages/ConfirmedPage.jsx';
-import SignupForm from './components/SignUpForm.jsx';
-import LoginForm from './components/LoginForm.jsx';
-// import Dashboard from './Dashboard';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import './App.css';
 
-// Add a simple Home component
-function Home() {
-  return (
-    <div style={{ 
-      maxWidth: '800px', 
-      margin: '3rem auto', 
-      padding: '2rem', 
-      textAlign: 'center',
-      borderRadius: '10px',
-      boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
-    }}>
-      <h1>Movie Playlist Site</h1>
-      <p>Create and share your favorite movie playlists!</p>
-      
-      <div style={{ marginTop: '2rem' }}>
-        <a href="/signup" style={{
-          display: 'inline-block',
-          padding: '12px 24px',
-          backgroundColor: '#4CAF50',
-          color: 'white',
-          textDecoration: 'none',
-          borderRadius: '5px',
-          fontWeight: 'bold',
-          marginRight: '15px'
-        }}>
-          Sign Up
-        </a>
-        <a href="/login" style={{
-          display: 'inline-block',
-          padding: '12px 24px',
-          backgroundColor: '#2196F3',
-          color: 'white',
-          textDecoration: 'none',
-          borderRadius: '5px',
-          fontWeight: 'bold'
-        }}>
-          Log In
-        </a>
-      </div>
-    </div>
-  );
-}
+// Providers
+import ThemeProvider from './contexts/ThemeContext';
+import UserProvider from './contexts/UserContext';
+
+// Components
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+
+// Pages
+import Home from './pages/Home';
+import Discover from './pages/Discover';
+import Playlists from './pages/Playlists';
+import MoodRecommend from './pages/MoodRecommend';
+import Social from './pages/Social';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Profile from './pages/Profile';
+import MoviePage from './pages/MoviePage';
+import ActorPage from './pages/ActorPage';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/signup" element={<SignupForm />} />
-        <Route path="/login" element={<LoginForm />} />
-        <Route path="/confirmed" element={<ConfirmedPage />} />
-        {/* <Route path="/dashboard" element={<Dashboard />} /> */}
-      </Routes>
-    </BrowserRouter>
+    <ThemeProvider>
+      <UserProvider>
+        <Router>
+          <div className="app">
+            <Navbar />
+            <main className="content">
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/discover" element={<Discover />} />
+                <Route path="/playlists" element={<Playlists />} />
+                <Route path="/mood" element={<MoodRecommend />} />
+                <Route path="/social" element={<Social />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/movie/:movieId" element={<MoviePage />} />
+                <Route path="/actor/:actorId" element={<ActorPage />} />
+              </Routes>
+            </main>
+            <Footer />
+          </div>
+        </Router>
+      </UserProvider>
+    </ThemeProvider>
   );
 }
-
 
 export default App;
