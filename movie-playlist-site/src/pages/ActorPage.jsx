@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { supabase } from '../services/supabaseClient';
 import './ActorPage.css';
 
 const ActorPage = () => {
@@ -19,26 +20,44 @@ const ActorPage = () => {
         setIsLoading(true);
         
         // Fetch actor details
-        const response = await fetch(`https://api.themoviedb.org/3/person/${actorId}?api_key=11f9c5c0b5a6586654ea01368e6c5ed4&language=en-US`);
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch actor data');
-        }
-        
-        const actorData = await response.json();
-        setActor(actorData);
-        
+        const { data, error } = await supabase
+          .from('crew_member')
+          .select(`
+            *,
+            movie_actor (
+              movie_id,
+              movie:movie_id (
+                movie_id,
+                title,
+                release_date,
+                poster_path,
+                vote_avg
+              )
+            )
+          `)
+          .eq('member_id', actorId);
+        if (error) throw error;
+        const actorData = data;
+        console.log(actorData);
+        setActor(actorData[0]);
+
         // Fetch actor's movies
-        const creditsResponse = await fetch(`https://api.themoviedb.org/3/person/${actorId}/movie_credits?api_key=11f9c5c0b5a6586654ea01368e6c5ed4&language=en-US`);
+        // const creditsResponse = await fetch(`https://api.themoviedb.org/3/person/${actorId}/movie_credits?api_key=11f9c5c0b5a6586654ea01368e6c5ed4&language=en-US`);
+
+        // if (!creditsResponse.ok) {
+        //   throw new Error('Failed to fetch actor credits');
+        // }
         
-        if (!creditsResponse.ok) {
-          throw new Error('Failed to fetch actor credits');
-        }
-        
-        const creditsData = await creditsResponse.json();
+        // const creditsData = await creditsResponse.json();
         
         // Sort movies by popularity
-        const sortedMovies = creditsData.cast.sort((a, b) => b.popularity - a.popularity);
+        // const sortedMovies = creditsData.cast.sort((a, b) => b.popularity - a.popularity);
+        // extract movie details
+        const moviesData = actorData.flatMap(item =>
+          item.movie_actor?.map(actorMovie => actorMovie.movie).filter(Boolean) || []
+        );
+        // Sort movies by popularity
+        const sortedMovies = moviesData.sort((a, b) => b.popularity - a.popularity);
         setMovies(sortedMovies);
         
         setIsLoading(false);
@@ -92,8 +111,8 @@ const ActorPage = () => {
   }
   
   // Format the profile URL
-  const profileUrl = actor.profile_path 
-    ? `https://image.tmdb.org/t/p/w300${actor.profile_path}`
+  const profileUrl = actor.profile_url 
+    ? `https://image.tmdb.org/t/p/w300${actor.profile_url}`
     : 'https://via.placeholder.com/300x450?text=No+Photo';
   
   // Calculate age if birth date is available and actor is alive
@@ -103,8 +122,8 @@ const ActorPage = () => {
     const birthDate = new Date(actor.birthday);
     let endDate = new Date();
     
-    if (actor.deathday) {
-      endDate = new Date(actor.deathday);
+    if (actor.death_date) {
+      endDate = new Date(actor.death_date);
     }
     
     let age = endDate.getFullYear() - birthDate.getFullYear();
@@ -147,25 +166,25 @@ const ActorPage = () => {
                   <span className="birth-place">in {actor.place_of_birth}</span>
                 )}
                 
-                {calculateAge() !== null && !actor.deathday && (
+                {calculateAge() !== null && !actor.death_date && (
                   <span className="age">({calculateAge()} years old)</span>
                 )}
               </div>
             )}
             
-            {actor.deathday && (
+            {actor.death_date && (
               <div className="death-info">
-                <span>Died: {formatDate(actor.deathday)}</span>
+                <span>Died: {formatDate(actor.death_date)}</span>
                 {calculateAge() !== null && (
                   <span className="age">({calculateAge()} years old)</span>
                 )}
               </div>
             )}
             
-            {actor.known_for_department && (
-              <div className="department">Known for: {actor.known_for_department}</div>
+            {actor.known_for && (
+              <div className="department">{actor.known_for === "Directing" ? "Director" : actor.gender === "female" ? "Actress" : "Actor"}</div>
             )}
-            
+
             {actor.biography && (
               <div className="biography">
                 <h3>Biography</h3>
@@ -180,7 +199,7 @@ const ActorPage = () => {
             <h2>Filmography</h2>
             <div className="movies-grid">
               {movies.map(movie => (
-                <Link to={`/movie/${movie.id}`} key={movie.id} className="movie-card">
+                <Link to={`/movie/${movie.movie_id}`} key={movie.movie_id} className="movie-card">
                   <div className="movie-poster-container">
                     {movie.poster_path ? (
                       <img 
@@ -194,9 +213,9 @@ const ActorPage = () => {
                       </div>
                     )}
                     
-                    {movie.vote_average > 0 && (
+                    {movie.vote_avg > 0 && (
                       <div className="movie-rating" style={{ backgroundColor: `${themeColors.surface}CC` }}>
-                        <span>⭐ {movie.vote_average.toFixed(1)}</span>
+                        <span>⭐ {movie.vote_avg.toFixed(1)}</span>
                       </div>
                     )}
                   </div>
@@ -208,11 +227,11 @@ const ActorPage = () => {
                         {new Date(movie.release_date).getFullYear()}
                       </div>
                     )}
-                    {movie.character && (
+                    {/* {movie.character && (
                       <div className="movie-character">
                         as <span>{movie.character}</span>
                       </div>
-                    )}
+                    )} */}
                   </div>
                 </Link>
               ))}
