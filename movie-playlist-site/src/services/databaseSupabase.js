@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { getMovieCredits } from './tmdbService';
 
 // Movies CRUD operations
 export const moviesService = {
@@ -25,15 +26,118 @@ export const moviesService = {
   // Get a specific movie by id
   async getMovieById(id) {
     const { data, error } = await supabase
-      .from('movies')
-      .select('*')
-      .eq('id', id)
+      .from('movie')
+      .select(`
+        *,
+        movie_genre (
+          genre_id,
+          genre (
+            name
+          )
+        ),
+        language:lang_id (
+          name
+        )
+      `)
+      .eq('movie_id', id)
       .single();
+    
+    if (error) throw error;
+
+    // Transform the data to include genres
+    const genres = data.movie_genre.map(item => item.genre.name);
+    return { ...data, genres };
+  },
+  
+  async getMovieCredits(id) {
+    const { data, error } = await supabase
+      .from('movie_actor')
+      .select(`
+        actor_id,
+        movie_id,
+        crew_member (
+          name,
+          profile_url,
+          known_for,
+          gender
+        )
+      `)
+      .eq('movie_id', id);
+  
+    if (error) throw error;
+
+    // Transform the data to match the expected structure
+    return { cast: data.map(item => ({
+        id: item.actor_id,
+        name: item.crew_member.name,
+        profile_url: item.crew_member.profile_url,
+        known_for: item.crew_member.known_for,
+        gender: item.crew_member.gender
+    })) };
+  },
+  
+  // get movie backdrop direct from tmdb
+  async getMovieBackdrop(id) {
+
+  },
+
+  // Get movie reviews
+  async getMovieReviews(id) {
+    const { data, error } = await supabase
+      .from('review')
+      .select(`
+        *,
+        user: user_id (
+          profile_url,
+          username
+        )
+        
+      `)
+      .eq('movie_id', id)
+      .order('created', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Transform the data to match the expected structure
+    return { reviews: data.map(item => ({
+        id: item.review_id,
+        // username: item.user.username,
+        // profile_url: item.user.profile_url,
+        user_id: item.user_id,
+        content: item.content,
+        vote: item.vote,
+        created: item.created
+      })),
+    };
+  },
+
+  // Add review
+  async addReview(movieId, reviewData) {
+    const { data, error } = await supabase
+      .from('review')
+      .insert([
+        { movie_id: movieId, ...reviewData }
+      ]);
     
     if (error) throw error;
     return data;
   },
 
+  // get user
+  async getUser() {
+    const { data: authUser, error: authError } = await supabase.auth.getUser();
+    if (authError) throw authError;
+
+    const { data, error } = await supabase
+      .from('user')
+      .select('*')
+      .eq('id', authUser.user.id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+  
   // Update a movie
   async updateMovie(id, updates) {
     const { data, error } = await supabase

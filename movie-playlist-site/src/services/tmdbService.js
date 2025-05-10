@@ -36,6 +36,22 @@ export const fetchMovieDetails = async (id) => {
   return response.data;
 };
 
+export const fetchMovieBackdrop = async (id) => {
+  const url = `https://api.themoviedb.org/3/movie/${id}?api_key=${apiKey}`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.status_message);
+    console.log("Fetched movie backdrop:", data.backdrop_path);
+    return data.backdrop_path; // this is a relative path like "/abc123.jpg"
+  } catch (error) {
+    console.error('Failed to fetch backdrop path:', error.message);
+    return null;
+  }
+};
+
 // 🟢 Get credits (cast and crew) of a movie by ID
 export const fetchMovieCredits = async (id) => {
   const response = await tmdb.get(`/movie/${id}/credits`);

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
-import { getMovieDetails, getMovieCredits, getMovieReviews } from '../services/tmdbService';
+import { getMovieDetails, getMovieCredits, getMovieReviews, fetchMovieBackdrop } from '../services/tmdbService';
+import { moviesService as supabaseService } from '../services/databaseSupabase';
 import PlaylistDropdown from '../components/PlaylistDropdown';
 import './MoviePage.css';
 
@@ -13,6 +14,7 @@ const MoviePage = () => {
   const navigate = useNavigate();
   
   const [movie, setMovie] = useState(null);
+  const [backdropUrl, setBackdropUrl] = useState(null);
   const [credits, setCredits] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [userReviews, setUserReviews] = useState([]);
@@ -28,23 +30,22 @@ const MoviePage = () => {
         setIsLoading(true);
         
         // Fetch movie details
-        const movieData = await getMovieDetails(movieId);
+        const movieData = await supabaseService.getMovieById(movieId);
+        // const movieData = await getMovieDetails(movieId);
         setMovie(movieData);
         
         // Fetch credits (cast and crew)
-        const creditsData = await getMovieCredits(movieId);
+        const creditsData = await supabaseService.getMovieCredits(movieId);
         setCredits(creditsData);
         
         // Fetch official reviews
-        const reviewsData = await getMovieReviews(movieId);
-        setReviews(reviewsData.results || []);
+        // const reviewsData = await getMovieReviews(movieId);
+        // setReviews(reviewsData.results || []);
         
         // Load user reviews from localStorage
-        const savedUserReviews = localStorage.getItem('userReviews');
-        if (savedUserReviews) {
-          const parsedReviews = JSON.parse(savedUserReviews);
-          const movieReviews = parsedReviews.filter(review => review.movieId === movieId);
-          setUserReviews(movieReviews);
+        const {reviews: fetchedUserReviews} = await supabaseService.getMovieReviews(movieId);
+        if (fetchedUserReviews) {
+          setUserReviews(fetchedUserReviews);
         }
         
         setIsLoading(false);
@@ -87,30 +88,43 @@ const MoviePage = () => {
     if (!newReview.trim()) return;
     
     const review = {
-      id: `user_review_${Date.now()}`,
-      movieId,
-      author: currentUser.username,
+      movie_id: movieId,
       content: newReview,
-      rating: newRating,
-      created_at: new Date().toISOString(),
-      userId: currentUser.id
+      vote: newRating,
+      created: new Date().toISOString(),
+      // user_id: moviesService.getUser().id,
     };
-    
-    // Add to user reviews
+
+    // Add to user reviews and supabase
+    supabaseService.addReview(movieId, review);
     const updatedReviews = [...userReviews, review];
+    // sort updated reviews by created date
+    updatedReviews.sort((a, b) => new Date(b.created) - new Date(a.created));
     setUserReviews(updatedReviews);
     
     // Save to localStorage
-    const savedUserReviews = localStorage.getItem('userReviews');
-    const parsedReviews = savedUserReviews ? JSON.parse(savedUserReviews) : [];
-    const newReviews = [...parsedReviews, review];
-    localStorage.setItem('userReviews', JSON.stringify(newReviews));
+    // const savedUserReviews = localStorage.getItem('userReviews');
+    // const parsedReviews = savedUserReviews ? JSON.parse(savedUserReviews) : [];
+    // const newReviews = [...parsedReviews, review];
+    // localStorage.setItem('userReviews', JSON.stringify(newReviews));
     
     // Clear form
     setNewReview('');
     setNewRating(5);
   };
-  
+
+  useEffect(() => {
+    const getBackdrop = async () => {
+      const backdropPath = await fetchMovieBackdrop(movieId);
+
+      if (backdropPath) {
+        setBackdropUrl(`https://image.tmdb.org/t/p/original${backdropPath}`);
+      }
+    };
+
+    getBackdrop();
+  }, [movieId]);
+
   if (isLoading) {
     return (
       <div className="movie-page loading">
@@ -144,11 +158,6 @@ const MoviePage = () => {
   const posterUrl = movie.poster_path 
     ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
     : 'https://via.placeholder.com/500x750?text=No+Poster';
-  
-  // Format the backdrop URL
-  const backdropUrl = movie.backdrop_path 
-    ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
-    : null;
 
   return (
     <div className="movie-page" style={{ backgroundColor: themeColors.background }}>
@@ -157,7 +166,7 @@ const MoviePage = () => {
           <div className="backdrop-overlay" style={{ backgroundColor: `${themeColors.background}CC` }}></div>
         </div>
       )}
-      
+
       <div className="movie-content">
         <div className="movie-header">
           <div className="poster-container">
@@ -183,24 +192,24 @@ const MoviePage = () => {
           <div className="movie-info">
             <h1>{movie.title} {movie.release_date && <span>({new Date(movie.release_date).getFullYear()})</span>}</h1>
             
+            <div className="tagline">{movie.tagline}</div>
+
             <div className="movie-meta">
               {movie.runtime && <span>{Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m</span>}
               {movie.genres && movie.genres.map(genre => (
-                <span key={genre.id} className="genre-tag">{genre.name}</span>
+                <span key={genre} className="genre-tag">{genre}</span>
               ))}
-              {movie.vote_average && (
+              {movie.vote_avg && (
                 <div className="rating">
-                  <span>⭐ {movie.vote_average.toFixed(1)}</span>
+                  <span>⭐ {movie.vote_avg.toFixed(1)}</span>
                   <span>({movie.vote_count} votes)</span>
                 </div>
               )}
             </div>
             
-            <div className="tagline">{movie.tagline}</div>
-            
             <div className="overview">
               <h3>Overview</h3>
-              <p>{movie.overview || 'No overview available'}</p>
+              <p>{movie.synopsis || 'No overview available'}</p>
             </div>
             
             <div className="additional-info">
@@ -217,6 +226,21 @@ const MoviePage = () => {
                   <strong>Revenue:</strong> ${(movie.revenue / 1000000).toFixed(1)} million
                 </div>
               )}
+              {movie.release_date && (
+                <div>
+                  <strong>Release Date:</strong> {new Date(movie.release_date).toLocaleDateString()}
+                </div>
+              )}
+              {movie.language.name && (
+                <div>
+                  <strong>Language:</strong> {movie.language.name}
+                </div>
+              )}
+              {movie.rating && (
+                <div>
+                  <strong>MPAA Rating:</strong> {movie.rating}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -224,14 +248,14 @@ const MoviePage = () => {
         {/* Cast Section */}
         {credits && credits.cast && credits.cast.length > 0 && (
           <div className="cast-section">
-            <h2>Cast</h2>
+            <h2>Crew</h2>
             <div className="cast-list">
               {credits.cast.slice(0, 12).map(person => (
                 <Link to={`/actor/${person.id}`} key={person.id} className="cast-member">
                   <div className="actor-photo">
-                    {person.profile_path ? (
+                    {person.profile_url ? (
                       <img 
-                        src={`https://image.tmdb.org/t/p/w185${person.profile_path}`} 
+                        src={`https://image.tmdb.org/t/p/w185${person.profile_url}`} 
                         alt={person.name}
                       />
                     ) : (
@@ -242,7 +266,7 @@ const MoviePage = () => {
                   </div>
                   <div className="actor-info">
                     <div className="actor-name">{person.name}</div>
-                    <div className="character">{person.character}</div>
+                    <div className="role"> {person.known_for === "Directing" ? "Director" : person.gender === "female" ? "Actress" : "Actor"}</div>
                   </div>
                 </Link>
               ))}
@@ -301,12 +325,13 @@ const MoviePage = () => {
                   <div key={review.id} className="review" style={{ backgroundColor: themeColors.surface }}>
                     <div className="review-header">
                       <div className="reviewer">
-                        <strong>{review.author}</strong>
+                        {/* <strong>{review.user_id}</strong> */}
+                        {<strong>name placeholder</strong>}
                         <span className="review-date">
-                          {new Date(review.created_at).toLocaleDateString()}
+                          {new Date(review.created).toLocaleDateString()}
                         </span>
                       </div>
-                      <div className="review-rating">⭐ {review.rating}/10</div>
+                      <div className="review-rating">⭐ {review.vote}/10</div>
                     </div>
                     <div className="review-content">{review.content}</div>
                   </div>
@@ -315,7 +340,7 @@ const MoviePage = () => {
             )}
             
             {/* TMDB reviews */}
-            {reviews.length > 0 && (
+            {/* {reviews.length > 0 && (
               <>
                 <h3>TMDB Reviews</h3>
                 {reviews.map(review => (
@@ -335,9 +360,9 @@ const MoviePage = () => {
                   </div>
                 ))}
               </>
-            )}
+            )} */}
             
-            {reviews.length === 0 && userReviews.length === 0 && (
+            {userReviews.length === 0 && (
               <div className="no-reviews">
                 <p>No reviews yet. {!currentUser && 'Log in to be the first to review!'}</p>
               </div>
