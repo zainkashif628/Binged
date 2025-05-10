@@ -125,6 +125,20 @@
   align-items: center;
 }
 
+.rating-source {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: white;
+}
+
+.imdb-rating {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #bb9200;
+}
+
 .tagline {
   font-style: italic;
   font-size: 1.2rem;

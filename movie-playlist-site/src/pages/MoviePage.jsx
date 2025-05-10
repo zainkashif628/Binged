@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { getMovieDetails, getMovieCredits, getMovieReviews, fetchMovieBackdrop } from '../services/tmdbService';
+import { getImdbRating } from '../services/omdbService';
 import { moviesService as supabaseService } from '../services/databaseSupabase';
 import PlaylistDropdown from '../components/PlaylistDropdown';
 import './MoviePage.css';
@@ -31,6 +32,8 @@ const MoviePage = () => {
         
         // Fetch movie details
         const movieData = await supabaseService.getMovieById(movieId);
+        const imdbRating = await getImdbRating(movieId);
+        movieData.imdb_rating = imdbRating;
         // const movieData = await getMovieDetails(movieId);
         setMovie(movieData);
         
@@ -212,8 +215,18 @@ const MoviePage = () => {
                 <div className="rating">
                   <span>⭐ {movie.vote_avg.toFixed(1)}</span>
                   <span>({movie.vote_count} votes)</span>
+                  {movie.imdb_rating && (
+                    <div className="rating-source"> | </div>
+                  )}
+                  {movie.imdb_rating && (
+                    <div className="imdb-rating">
+                        <span>IMDb: {movie.imdb_rating.rating}</span>
+                    </div>
+                  )}
                 </div>
               )}
+              {/* 
+              )} */}
             </div>
             
             <div className="overview">

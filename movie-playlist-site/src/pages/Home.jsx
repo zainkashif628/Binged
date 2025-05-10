@@ -10,7 +10,7 @@ const Home = () => {
   const { themeColors } = useTheme();
   const navigate = useNavigate();
   
-  const [nowPlayingMovies, setNowPlayingMovies] = useState([]);
+  const [animatedMovies, setAnimatedMovies] = useState([]);
   const [horrorMovies, setHorrorMovies] = useState([]);
   const [popularMovies, setPopularMovies] = useState([]);
   const [upcomingMovies, setUpcomingMovies] = useState([]);
@@ -32,7 +32,7 @@ const Home = () => {
         console.log("Home component: Starting to fetch movies from TMDB...");
         
         // Fetch different movie categories
-        const nowPlaying = await supabaseService.getNowPlayingMovies();
+        const animated = await supabaseService.getAnimatedMovies();
         // console.log(`Fetched ${nowPlaying?.length || 0} now playing movies`);
         
         const horror = await supabaseService.getHorrorMovies();
@@ -57,7 +57,7 @@ const Home = () => {
         setHeroMovies(potentialHeroMovies.slice(0, 6) || []);
         console.log(potentialHeroMovies);
         // Set category movies
-        setNowPlayingMovies(nowPlaying);
+        setAnimatedMovies(animated);
         setHorrorMovies(horror);
         setPopularMovies(popular);
         setUpcomingMovies(upcoming);
@@ -182,11 +182,11 @@ const Home = () => {
         </div>
       ) : (
         <>
-          {/* Top Rated Movies Section */}
+          {/* Fan Favorites Section */}
           <div className="movie-section">
-            <h2 className="section-title" style={titleStyle}>Top Horror Movies 👻</h2>
+            <h2 className="section-title" style={titleStyle}>Fan Favorites ❤️</h2>
             <div className="movie-row">
-              {horrorMovies.slice(0, 20).map((movie) => (
+              {popularMovies.slice(0, 20).map((movie) => (
                 <div className="movie-card-container" key={movie.movie_id}>
                   <MovieCard
                     movie={movie}
@@ -214,11 +214,11 @@ const Home = () => {
             </div>
           </div>
 
-          {/* Fan Favorites Section */}
+          {/* Horror Movies Section */}
           <div className="movie-section">
-            <h2 className="section-title" style={titleStyle}>Fan Favorites ❤️</h2>
+            <h2 className="section-title" style={titleStyle}>Top Horror Movies 👻</h2>
             <div className="movie-row">
-              {popularMovies.slice(0, 20).map((movie) => (
+              {horrorMovies.slice(0, 20).map((movie) => (
                 <div className="movie-card-container" key={movie.movie_id}>
                   <MovieCard
                     movie={movie}
@@ -230,11 +230,11 @@ const Home = () => {
             </div>
           </div>
 
-          {/* Now Playing Section */}
+          {/* Animated Section */}
           <div className="movie-section">
-            <h2 className="section-title" style={titleStyle}>Now Playing 🎬</h2>
+            <h2 className="section-title" style={titleStyle}>Animated Movies 🎨</h2>
             <div className="movie-row">
-              {nowPlayingMovies.slice(0, 20).map((movie) => (
+              {animatedMovies.slice(0, 20).map((movie) => (
                 <div className="movie-card-container" key={movie.movie_id}>
                   <MovieCard
                     movie={movie}

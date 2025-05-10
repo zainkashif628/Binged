@@ -39,30 +39,56 @@ export const moviesService = {
     };
     return data;
   },
-async getHorrorMovies() {
-  const { data, error } = await supabase
-    .from('movie_genre')
-    .select(`
-      movie (
-        *
-      )
-    `)
-    .eq('genre_id', 27)
-    .limit(50); // get more in case we filter later
 
-  if (error) {
-    console.error('Error fetching horror movies:', error);
-    return [];
-  }
+  async getAnimatedMovies() {
+    const { data, error } = await supabase
+      .from('movie_genre')
+      .select(`
+        movie (
+          *
+        )
+      `)
+      .eq('genre_id', 16)
+      .limit(50); // get more in case we filter later
 
-  // Extract and sort movies by popularity (descending)
-  const sorted = data
-    .map(entry => entry.movie)
-    .sort((a, b) => b.popularity - a.popularity)
-    .slice(0, 20); // return top 20
+    if (error) {
+      console.error('Error fetching animated movies:', error);
+      return [];
+    }
 
-  return sorted;
-},
+    // Extract and sort movies by popularity (descending)
+    const sorted = data
+      .map(entry => entry.movie)
+      .sort((a, b) => b.popularity - a.popularity)
+      .slice(0, 20); // return top 20
+
+    return sorted;
+  },
+
+  async getHorrorMovies() {
+    const { data, error } = await supabase
+      .from('movie_genre')
+      .select(`
+        movie (
+          *
+        )
+      `)
+      .eq('genre_id', 27)
+      .limit(50); // get more in case we filter later
+
+    if (error) {
+      console.error('Error fetching horror movies:', error);
+      return [];
+    }
+
+    // Extract and sort movies by popularity (descending)
+    const sorted = data
+      .map(entry => entry.movie)
+      .sort((a, b) => b.popularity - a.popularity)
+      .slice(0, 20); // return top 20
+
+    return sorted;
+  },
 
   async getPopularMovies() {
     const { data, error } = await supabase
@@ -83,8 +109,8 @@ async getHorrorMovies() {
       .from('movie')
       .select('*')
       .gt('release_date', new Date().toISOString().split('T')[0]) // Only upcoming movies
-      .order('release_date', { ascending: true })
       .order('popularity', { ascending: false }) // Sort by popularity
+      .order('release_date', { ascending: true })
       .limit(20);
 
     if (error) {
