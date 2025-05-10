@@ -112,15 +112,19 @@ export const moviesService = {
   },
 
   // Add review
-  async addReview(movieId, reviewData) {
-    const { data, error } = await supabase
-      .from('review')
-      .insert([
-        { movie_id: movieId, ...reviewData }
-      ]);
-    
-    if (error) throw error;
-    return data;
+  async addReview(movie_id, reviewData) {
+    try {
+      const response = await supabase
+        .from('review')
+        .insert([{ movie_id, ...reviewData }]);
+
+      console.log('Insert response:', response);
+
+      if (response.error) throw response.error;
+    } catch (err) {
+      console.error('Error adding review:', err);
+      throw err;
+    }
   },
 
   // get user

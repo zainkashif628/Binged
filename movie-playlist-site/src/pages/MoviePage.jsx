@@ -50,7 +50,7 @@ const MoviePage = () => {
         
         setIsLoading(false);
       } catch (err) {
-        console.error('Error fetching movie data:', err);
+        console.error('Error fetching movie data:', JSON.stringify(err));
         setError('Failed to load movie data. Please try again.');
         setIsLoading(false);
       }
@@ -92,11 +92,20 @@ const MoviePage = () => {
       content: newReview,
       vote: newRating,
       created: new Date().toISOString(),
+      user_id: "e88bbdb8-b50f-4c4c-96e8-c4ba1a1c7fc3"
       // user_id: moviesService.getUser().id,
     };
-
-    // Add to user reviews and supabase
-    supabaseService.addReview(movieId, review);
+    try {
+      // Add to user reviews and supabase
+      const {error} = supabaseService.addReview(movieId, review);
+      if (error) {
+        throw error;
+      }
+    } catch (err) {
+      console.error('Error adding review:', err.message);
+      setError('Failed to add review. Please try again.');
+      return;
+    }
     const updatedReviews = [...userReviews, review];
     // sort updated reviews by created date
     updatedReviews.sort((a, b) => new Date(b.created) - new Date(a.created));
@@ -290,7 +299,7 @@ const MoviePage = () => {
                   onChange={(e) => setNewRating(Number(e.target.value))}
                   style={{ backgroundColor: themeColors.surface, color: themeColors.text }}
                 >
-                  {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(num => (
+                  {[ 5, 4, 3, 2, 1].map(num => (
                     <option key={num} value={num}>
                       {num} {num === 1 ? 'star' : 'stars'}
                     </option>
