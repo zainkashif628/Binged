@@ -17,22 +17,22 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
   // Format the poster URL or use a fallback image
   const posterUrl = movie.poster_path 
     ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-    : 'https://via.placeholder.com/500x750?text=No+Poster';
+    : 'https://dummyimage.com/500x750/000/fff&text=No+Poster';
 
   // Check if movie is in liked playlist when component mounts
   useEffect(() => {
     if (currentUser && currentUser.playlists) {
       const likedPlaylist = currentUser.playlists.find(p => p.name === 'Liked');
       if (likedPlaylist) {
-        const isInLiked = likedPlaylist.movies.some(m => m.id === movie.id);
+        const isInLiked = likedPlaylist.movies.some(m => m.movie_id === movie.movie_id);
         setIsLiked(isInLiked);
       }
     }
-  }, [currentUser, movie.id]);
+  }, [currentUser, movie.movie_id]);
 
   const handleCardClick = () => {
     // Navigate to movie detail page instead of showing modal
-    navigate(`/movie/${movie.id}`);
+    navigate(`/movie/${movie.movie_id}`);
   };
 
   const handleAddToPlaylistClick = (e) => {
@@ -81,12 +81,12 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
     console.log(`Movie ${movie.title} added to playlist with ID: ${playlistId}`);
   };
 
-  // Create a truncated overview if it's too long
-  const truncatedOverview = movie.overview
-    ? movie.overview.length > 100
-      ? `${movie.overview.slice(0, 100)}...`
-      : movie.overview
-    : "No overview available";
+  // Create a truncated synopsis if it's too long
+  const truncatedSynopsis = movie.synopsis
+    ? movie.synopsis.length > 100
+      ? `${movie.synopsis.slice(0, 100)}...`
+      : movie.synopsis
+    : "No synopsis available";
 
   // Format release date to year only if available
   const releaseYear = movie.release_date
@@ -143,7 +143,7 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
         <div className="movie-info">
           <h3>{movie.title}</h3>
           {releaseYear && <span className="year">({releaseYear})</span>}
-          <p className="overview">{truncatedOverview}</p>
+          <p className="overview">{truncatedSynopsis}</p>
         </div>
       </div>
       

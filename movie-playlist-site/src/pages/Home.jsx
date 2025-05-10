@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchNowPlayingMovies, fetchTopRatedMovies, fetchPopularMovies, fetchUpcomingMovies } from '../services/tmdbService';
+import { fetchNowPlayingMovies, fetchTopRatedMovies, fetchPopularMovies, fetchUpcomingMovies, fetchMovieBackdrop } from '../services/tmdbService';
 import MovieCard from '../components/MovieCard';
 import { useTheme } from '../contexts/ThemeContext';
-
+import { moviesService as supabaseService } from '../services/databaseSupabase';
 import './Home.css';
 
 const Home = () => {
@@ -11,7 +11,7 @@ const Home = () => {
   const navigate = useNavigate();
   
   const [nowPlayingMovies, setNowPlayingMovies] = useState([]);
-  const [topRatedMovies, setTopRatedMovies] = useState([]);
+  const [horrorMovies, setHorrorMovies] = useState([]);
   const [popularMovies, setPopularMovies] = useState([]);
   const [upcomingMovies, setUpcomingMovies] = useState([]);
   
@@ -32,31 +32,33 @@ const Home = () => {
         console.log("Home component: Starting to fetch movies from TMDB...");
         
         // Fetch different movie categories
-        const nowPlaying = await fetchNowPlayingMovies();
-        console.log(`Fetched ${nowPlaying?.length || 0} now playing movies`);
+        const nowPlaying = await supabaseService.getNowPlayingMovies();
+        // console.log(`Fetched ${nowPlaying?.length || 0} now playing movies`);
         
-        const topRated = await fetchTopRatedMovies();
-        console.log(`Fetched ${topRated?.length || 0} top rated movies`);
+        const horror = await supabaseService.getHorrorMovies();
+        // console.log(`Fetched ${topRated?.length || 0} top rated movies`);
+        console.log(`Fetched ${horror?.length || 0} horror movies`);
+        const popular = await supabaseService.getPopularMovies();
+        // console.log(`Fetched ${popular?.length || 0} popular movies`);
         
-        const popular = await fetchPopularMovies();
-        console.log(`Fetched ${popular?.length || 0} popular movies`);
+        const upcoming = await supabaseService.getUpcomingMovies();
+        // console.log(`Fetched ${upcoming?.length || 0} upcoming movies`);
         
-        const upcoming = await fetchUpcomingMovies();
-        console.log(`Fetched ${upcoming?.length || 0} upcoming movies`);
-        
+        // fetch movie backdrops for hero section
+        const potentialHeroMovies = await supabaseService.getHeroMovies();
         // Filter to only include movies with backdrop images for hero section
-        const potentialHeroMovies = [
-          ...topRated.filter(movie => movie.backdrop_path && movie.vote_average >= 7).slice(0, 3),
-          ...popular.filter(movie => movie.backdrop_path && movie.vote_average >= 7).slice(0, 3),
-          ...upcoming.filter(movie => movie.backdrop_path).slice(0, 2)
-        ];
+        // const potentialHeroMovies = [
+        //   ...topRated.filter(movie => movie.backdrop_path).slice(0, 3),
+        //   ...popular.filter(movie => movie.backdrop_path).slice(0, 3),  
+        //   ...upcoming.filter(movie => movie.backdrop_path).slice(0, 2)
+        // ];
         
         // Set hero movies for slider
-        setHeroMovies(potentialHeroMovies.slice(0, 6));
-        
+        setHeroMovies(potentialHeroMovies.slice(0, 6) || []);
+        console.log(potentialHeroMovies);
         // Set category movies
         setNowPlayingMovies(nowPlaying);
-        setTopRatedMovies(topRated);
+        setHorrorMovies(horror);
         setPopularMovies(popular);
         setUpcomingMovies(upcoming);
         
@@ -113,9 +115,9 @@ const Home = () => {
           <div className="hero-slides">
             {heroMovies.map((movie, index) => (
               <div 
-                key={movie.id}
+                key={movie.movie_id}
                 className={`hero-slide ${index === activeSlide ? 'active' : ''}`}
-                onClick={() => handleHeroMovieClick(movie.id)}
+                onClick={() => handleHeroMovieClick(movie.movie_id)}
               >
                 <div 
                   className="hero-backdrop"
@@ -127,12 +129,13 @@ const Home = () => {
                   <div className="hero-info">
                     <h1 className="hero-title">{movie.title}</h1>
                     <p className="hero-description">
-                      {movie.overview.length > 180 
-                        ? `${movie.overview.substring(0, 180)}...` 
-                        : movie.overview}
+                      {movie.synopsis.length > 180 
+                        ? `${movie.synopsis.substring(0, 180)}...` 
+                        : movie.synopsis}
                     </p>
                     <div className="hero-metadata">
-                      <span className="rating">⭐ {movie.vote_average.toFixed(1)}</span>
+                      {/* vote_avg might be null */}
+                      <span className="rating">⭐ {movie.vote_avg?.toFixed(1) || 0}</span>
                       {movie.release_date && (
                         <span className="year">{new Date(movie.release_date).getFullYear()}</span>
                       )}
@@ -141,7 +144,7 @@ const Home = () => {
                       className="hero-cta"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/movie/${movie.id}`);
+                        navigate(`/movie/${movie.movie_id}`);
                       }}
                       style={{
                         backgroundColor: themeColors.primary,
@@ -181,10 +184,10 @@ const Home = () => {
         <>
           {/* Top Rated Movies Section */}
           <div className="movie-section">
-            <h2 className="section-title" style={titleStyle}>Top Rated Movies ⭐</h2>
+            <h2 className="section-title" style={titleStyle}>Top Horror Movies 👻</h2>
             <div className="movie-row">
-              {topRatedMovies.slice(0, 6).map((movie) => (
-                <div className="movie-card-container" key={movie.id}>
+              {horrorMovies.slice(0, 20).map((movie) => (
+                <div className="movie-card-container" key={movie.movie_id}>
                   <MovieCard
                     movie={movie}
                     showAddToPlaylist
@@ -197,10 +200,10 @@ const Home = () => {
 
           {/* New Releases Section */}
           <div className="movie-section">
-            <h2 className="section-title" style={titleStyle}>New Releases 🍿</h2>
+            <h2 className="section-title" style={titleStyle}>Upcoming 🍿</h2>
             <div className="movie-row">
-              {upcomingMovies.slice(0, 6).map((movie) => (
-                <div className="movie-card-container" key={movie.id}>
+              {upcomingMovies.slice(0, 20).map((movie) => (
+                <div className="movie-card-container" key={movie.movie_id}>
                   <MovieCard
                     movie={movie}
                     showAddToPlaylist
@@ -215,8 +218,8 @@ const Home = () => {
           <div className="movie-section">
             <h2 className="section-title" style={titleStyle}>Fan Favorites ❤️</h2>
             <div className="movie-row">
-              {popularMovies.slice(0, 6).map((movie) => (
-                <div className="movie-card-container" key={movie.id}>
+              {popularMovies.slice(0, 20).map((movie) => (
+                <div className="movie-card-container" key={movie.movie_id}>
                   <MovieCard
                     movie={movie}
                     showAddToPlaylist
@@ -231,8 +234,8 @@ const Home = () => {
           <div className="movie-section">
             <h2 className="section-title" style={titleStyle}>Now Playing 🎬</h2>
             <div className="movie-row">
-              {nowPlayingMovies.slice(0, 6).map((movie) => (
-                <div className="movie-card-container" key={movie.id}>
+              {nowPlayingMovies.slice(0, 20).map((movie) => (
+                <div className="movie-card-container" key={movie.movie_id}>
                   <MovieCard
                     movie={movie}
                     showAddToPlaylist

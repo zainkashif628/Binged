@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { getMovieCredits } from './tmdbService';
+import { getMovieCredits, fetchMovieBackdrop } from './tmdbService';
 
 // Movies CRUD operations
 export const moviesService = {
@@ -21,6 +21,102 @@ export const moviesService = {
     
     if (error) throw error;
     return data;
+  },
+
+  async getNowPlayingMovies() {
+    const { data, error } = await supabase
+      .from('movie')
+      .select('*')
+      .gte('release_date', new Date(new Date().setMonth(new Date().getMonth() - 2)).toISOString().split('T')[0])
+      .lte('release_date', new Date().toISOString().split('T')[0])
+      .order('release_date', { ascending: false })
+      .order('popularity', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error('Error fetching hero movies:', error);
+      return [];
+    };
+    return data;
+  },
+async getHorrorMovies() {
+  const { data, error } = await supabase
+    .from('movie_genre')
+    .select(`
+      movie (
+        *
+      )
+    `)
+    .eq('genre_id', 27)
+    .limit(50); // get more in case we filter later
+
+  if (error) {
+    console.error('Error fetching horror movies:', error);
+    return [];
+  }
+
+  // Extract and sort movies by popularity (descending)
+  const sorted = data
+    .map(entry => entry.movie)
+    .sort((a, b) => b.popularity - a.popularity)
+    .slice(0, 20); // return top 20
+
+  return sorted;
+},
+
+  async getPopularMovies() {
+    const { data, error } = await supabase
+      .from('movie')
+      .select('*')
+      .order('popularity', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error('Error fetching hero movies:', error);
+      return [];
+    };
+    return data;
+  },
+
+  async getUpcomingMovies() {
+    const { data, error } = await supabase
+      .from('movie')
+      .select('*')
+      .gt('release_date', new Date().toISOString().split('T')[0]) // Only upcoming movies
+      .order('release_date', { ascending: true })
+      .order('popularity', { ascending: false }) // Sort by popularity
+      .limit(20);
+
+    if (error) {
+      console.error('Error fetching hero movies:', error);
+      return [];
+    };
+    return data;
+  },
+
+  async getHeroMovies() {
+    const { data, error } = await supabase
+      .from('movie')
+      .select('*')
+      .order('popularity', { ascending: false })  // Popular movies
+      .order('vote_avg', { ascending: false })  // Sorted by vote average
+      .limit(20); // Hero section would generally be limited to a few movies
+
+    if (error) {
+      console.error('Error fetching hero movies:', error);
+      return [];
+    };
+    let filteredMovies = [];
+    // filter to only include movies with backdrop images for hero section
+    for (const movie of data) {
+      let backdrop = await fetchMovieBackdrop(movie.movie_id);
+      if (backdrop) {
+        movie.backdrop_path = backdrop;
+        filteredMovies.push(movie);
+      }
+    }
+    console.log(filteredMovies);
+    return filteredMovies;
   },
 
   // Get a specific movie by id
@@ -74,11 +170,6 @@ export const moviesService = {
         known_for: item.crew_member.known_for,
         gender: item.crew_member.gender
     })) };
-  },
-  
-  // get movie backdrop direct from tmdb
-  async getMovieBackdrop(id) {
-
   },
 
   // Get movie reviews
