@@ -89,7 +89,7 @@ const Playlists = React.memo(() => {
     
     try {
       // const loadedPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
-      const loadedPlaylists = await playlistsService.getUserPlaylists('c2b079d9-1e27-4fcf-b92d-bc4d09989090');
+      const loadedPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
       setPlaylists(loadedPlaylists);
     } catch (err) {
       console.error("Error loading playlists:", err);
@@ -110,7 +110,7 @@ const Playlists = React.memo(() => {
       const newPlaylist = await playlistsService.createPlaylist({
         name: playlistName.trim(),
         // user_id: currentUser.id,
-        user_id: 'c2b079d9-1e27-4fcf-b92d-bc4d09989090', // UUID format
+        user_id: currentUser.id, // UUID format
         status: 'private'
       });
       
@@ -205,10 +205,27 @@ const Playlists = React.memo(() => {
     setSelectedPlaylistId(playlistId);
   }, []);
   
+  // Combine real playlists with the virtual Watched playlist
+  const allPlaylists = useMemo(() => {
+    if (!currentUser) return playlists;
+    const watched = {
+      id: 'watched',
+      name: 'Watched',
+      status: 'special',
+      user_id: currentUser.id,
+      movies: currentUser.watchedPlaylist || []
+    };
+    // Only add if there are watched movies
+    if (watched.movies && watched.movies.length > 0) {
+      return [watched, ...playlists];
+    }
+    return playlists;
+  }, [playlists, currentUser]);
+  
   // Get the selected playlist
   const selectedPlaylist = useMemo(() => {
-    return playlists.find(playlist => playlist.id === selectedPlaylistId);
-  }, [playlists, selectedPlaylistId]);
+    return allPlaylists.find(playlist => playlist.id === selectedPlaylistId);
+  }, [allPlaylists, selectedPlaylistId]);
 
   // Clear any error messages
   const dismissError = () => {
@@ -245,7 +262,7 @@ const Playlists = React.memo(() => {
           <PlaylistCreator onCreatePlaylist={handleCreatePlaylist} />
           
           {/* Empty state when no playlists exist */}
-          {playlists.length === 0 ? (
+          {allPlaylists.length === 0 ? (
             <div className="empty-state" style={themedStyles.emptyState}>
               <h3 style={{ color: themeColors.text }}>You don't have any playlists yet</h3>
               <p style={{ color: themeColors.textSecondary }}>Create your first playlist above to get started!</p>
@@ -256,7 +273,7 @@ const Playlists = React.memo(() => {
               {/* Sidebar with playlists list */}
               <div className="playlists-sidebar">
                 <PlaylistsList 
-                  playlists={playlists} 
+                  playlists={allPlaylists} 
                   selectedPlaylistId={selectedPlaylistId}
                   onSelectPlaylist={handleSelectPlaylist}
                   onDeletePlaylist={handleDeletePlaylist}

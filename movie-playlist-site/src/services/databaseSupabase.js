@@ -602,3 +602,44 @@ export const playlistMoviesService = {
     return data;
   }
 };
+
+// Watched Movies CRUD operations
+export const watchedMoviesService = {
+  // Add a movie to watched
+  async addWatchedMovie(userId, movieId) {
+    const { error } = await supabase
+      .from('watched_movies')
+      .upsert([{ user_id: userId, movie_id: movieId, watch_date: new Date().toISOString() }]);
+    if (error) throw error;
+  },
+
+  // Remove a movie from watched
+  async removeWatchedMovie(userId, movieId) {
+    const { error } = await supabase
+      .from('watched_movies')
+      .delete()
+      .match({ user_id: userId, movie_id: movieId });
+    if (error) throw error;
+  },
+
+  // Get all watched movies for a user (movie_id, watch_date)
+  async getWatchedMovies(userId) {
+    const { data, error } = await supabase
+      .from('watched_movies')
+      .select('movie_id, watch_date')
+      .eq('user_id', userId);
+    if (error) throw error;
+    return data;
+  },
+
+  // Get the full Watched playlist for a user (with movie details)
+  async getWatchedPlaylist(userId) {
+    const { data, error } = await supabase
+      .from('watched_movies')
+      .select('movie:movie_id(*)')
+      .eq('user_id', userId);
+    if (error) throw error;
+    // Return array of movie objects
+    return data.map(entry => entry.movie);
+  }
+};

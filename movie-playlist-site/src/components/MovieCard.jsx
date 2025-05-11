@@ -7,12 +7,13 @@ import "./MovieCard.css";
 
 const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
   const navigate = useNavigate();
-  const { currentUser, addToDefaultPlaylist } = useUser();
+  const { currentUser, addToDefaultPlaylist, addToWatched } = useUser();
   const { themeColors } = useTheme();
   const [showDropdown, setShowDropdown] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [isWatched, setIsWatched] = useState(false);
 
   // Format the poster URL or use a fallback image
   const posterUrl = movie.poster_path 
@@ -24,11 +25,25 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
     if (currentUser && currentUser.playlists) {
       const likedPlaylist = currentUser.playlists.find(p => p.name === 'Liked');
       if (likedPlaylist) {
-        const isInLiked = likedPlaylist.movies.some(m => m.movie_id === movie.movie_id);
+        const isInLiked = likedPlaylist.movies.some(m => (m.movie_id || m.id) === (movie.movie_id || movie.id));
         setIsLiked(isInLiked);
+      } else {
+        setIsLiked(false);
       }
+    } else {
+      setIsLiked(false);
     }
-  }, [currentUser, movie.movie_id]);
+  }, [currentUser, movie.movie_id, movie.id]);
+
+  // Check if movie is in watched list when component mounts
+  useEffect(() => {
+    if (currentUser && currentUser.watchedMovies) {
+      const watched = currentUser.watchedMovies.some(m => (m.movie_id || m.id) === (movie.movie_id || movie.id));
+      setIsWatched(watched);
+    } else {
+      setIsWatched(false);
+    }
+  }, [currentUser, movie.movie_id, movie.id]);
 
   const handleCardClick = () => {
     // Navigate to movie detail page instead of showing modal
@@ -54,21 +69,26 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
     }
   };
 
-  const handleLikeClick = (e) => {
-    e.stopPropagation(); // Prevent triggering navigation
-    
+  const handleLikeClick = async (e) => {
+    e.stopPropagation();
     if (!currentUser) {
-      // If no user is logged in, prompt to login
       alert("Please log in to like movies");
       return;
     }
-    
-    // Toggle liked state
     const newLikedState = !isLiked;
     setIsLiked(newLikedState);
-    
-    // Add to or remove from default "Liked" playlist
-    addToDefaultPlaylist(movie, 'Liked', newLikedState);
+    await addToDefaultPlaylist(movie, 'Liked', newLikedState);
+  };
+
+  const handleWatchedClick = async (e) => {
+    e.stopPropagation();
+    if (!currentUser) {
+      alert("Please log in to mark movies as watched");
+      return;
+    }
+    const newWatchedState = !isWatched;
+    setIsWatched(newWatchedState);
+    await addToWatched(movie, newWatchedState);
   };
 
   const handlePlaylistSelected = (playlistId) => {
@@ -127,7 +147,14 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
             >
               <span className="heart-icon">{isLiked ? '♥' : '♡'}</span>
             </button>
-            
+            <button 
+              className={`watched-btn ${isWatched ? 'active' : ''}`}
+              onClick={handleWatchedClick}
+              aria-label={isWatched ? "Unmark as watched" : "Mark as watched"}
+              title="Mark as watched"
+            >
+              <span className="eye-icon">{isWatched ? '👁️' : '👁'}</span>
+            </button>
             <button 
               className={`add-btn ${isAdding ? 'active' : ''}`}
               onClick={handleAddToPlaylistClick}

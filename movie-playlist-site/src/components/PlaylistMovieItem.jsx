@@ -22,11 +22,15 @@ const PlaylistMovieItem = ({ movie, onRemove }) => {
     if (currentUser && currentUser.playlists) {
       const likedPlaylist = currentUser.playlists.find(p => p.name === 'Liked');
       if (likedPlaylist) {
-        const isInLiked = likedPlaylist.movies.some(m => m.id === movie.id);
+        const isInLiked = likedPlaylist.movies.some(m => (m.movie_id || m.id) === (movie.movie_id || movie.id));
         setIsLiked(isInLiked);
+      } else {
+        setIsLiked(false);
       }
+    } else {
+      setIsLiked(false);
     }
-  }, [currentUser, movie.id]);
+  }, [currentUser, movie.movie_id, movie.id]);
 
   const handleCardClick = () => {
     // Navigate to movie detail page
@@ -46,29 +50,23 @@ const PlaylistMovieItem = ({ movie, onRemove }) => {
     }, 300);
   };
 
-  const handleLikeClick = (e) => {
-    e.stopPropagation(); // Prevent triggering navigation
-    
+  const handleLikeClick = async (e) => {
+    e.stopPropagation();
     if (!currentUser) {
-      // If no user is logged in, prompt to login
       alert("Please log in to like movies");
       return;
     }
-    
-    // Toggle liked state
     const newLikedState = !isLiked;
     setIsLiked(newLikedState);
-    
-    // Add to or remove from default "Liked" playlist
-    addToDefaultPlaylist(movie, 'Liked', newLikedState);
+    await addToDefaultPlaylist(movie, 'Liked', newLikedState);
   };
 
-  // Create a truncated overview if it's too long
-  const truncatedOverview = movie.overview
-    ? movie.overview.length > 100
-      ? `${movie.overview.slice(0, 100)}...`
-      : movie.overview
-    : "No overview available";
+  // Create a truncated synopsis if it's too long
+  const truncatedSynopsis = movie.synopsis
+    ? movie.synopsis.length > 100
+      ? `${movie.synopsis.slice(0, 100)}...`
+      : movie.synopsis
+    : "No synopsis available";
 
   // Format release date to year only if available
   const releaseYear = movie.release_date
@@ -123,7 +121,7 @@ const PlaylistMovieItem = ({ movie, onRemove }) => {
         <div className="movie-info">
           <h3>{movie.title}</h3>
           {releaseYear && <span className="year">({releaseYear})</span>}
-          <p className="overview">{truncatedOverview}</p>
+          <p className="overview">{truncatedSynopsis}</p>
         </div>
       </div>
     </div>

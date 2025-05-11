@@ -15,7 +15,8 @@ export default function ConfirmedPage() {
     const handleConfirmedUser = async () => {
       try {
         console.log("URL Location:", location); // Debug
-        
+        console.log("window.location.hash:", window.location.hash);
+
         // First try to get the current session
         const { data: sessionData } = await supabase.auth.getSession();
         console.log("Session data:", sessionData); // Debug

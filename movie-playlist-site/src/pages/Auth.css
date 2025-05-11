@@ -121,3 +121,30 @@
     padding: var(--spacing-md);
   }
 }
+
+.toggle-password {
+  background: rgba(52, 152, 219, 0.08);
+  color: #3498db;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95em;
+  padding: 4px 12px;
+  margin-top: 6px;
+  margin-left: 8px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  position: absolute;
+  right: 10px;
+  top: 32px;
+  z-index: 2;
+}
+
+.toggle-password:hover, .toggle-password:focus {
+  background: #3498db;
+  color: #fff;
+  outline: none;
+}
+
+.form-control {
+  position: relative;
+}

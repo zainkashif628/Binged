@@ -1,125 +1,95 @@
 import React, { useState, useEffect } from "react";
 import { useUser } from "../contexts/UserContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { playlistsService } from "../services/databaseSupabase";
 import "./PlaylistDropdown.css";
 
 const PlaylistDropdown = ({ movie, onPlaylistSelected, onClose }) => {
-  const { currentUser, updateProfile } = useUser();
+  const { currentUser } = useUser();
   const { themeColors } = useTheme();
   const [selected, setSelected] = useState("");
   const [playlists, setPlaylists] = useState([]);
   const [showCreateNew, setShowCreateNew] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [message, setMessage] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (currentUser && currentUser.playlists) {
-      setPlaylists(currentUser.playlists);
-    } else {
-      const savedPlaylists = localStorage.getItem('playlists');
-      setPlaylists(savedPlaylists ? JSON.parse(savedPlaylists) : []);
-    }
+    const fetchPlaylists = async () => {
+      if (currentUser) {
+        setLoading(true);
+        try {
+          let userPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
+          // Filter out 'Liked' and 'Watched' playlists
+          userPlaylists = userPlaylists.filter(p => p.name !== 'Liked' && p.name !== 'Watched');
+          setPlaylists(userPlaylists);
+        } catch (err) {
+          setMessage({ type: 'error', text: 'Failed to load playlists' });
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    fetchPlaylists();
   }, [currentUser]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!selected) {
       setMessage({ type: 'error', text: 'Please select a playlist' });
       return;
     }
-    
+    setLoading(true);
     try {
-      const playlistIndex = playlists.findIndex(p => 
-        p.id === selected || p.name === selected
-      );
-      
-      if (playlistIndex === -1) {
+      const playlist = playlists.find(p => p.id === selected || p.name === selected);
+      if (!playlist) {
         setMessage({ type: 'error', text: 'Playlist not found' });
+        setLoading(false);
         return;
       }
-      
-      if (playlists[playlistIndex].movies.some(m => m.id === movie.id)) {
-        setMessage({ 
-          type: 'info', 
-          text: `"${movie.title}" is already in "${playlists[playlistIndex].name}"` 
-        });
+      if (playlist.movies.some(m => (m.movie_id || m.id) === (movie.movie_id || movie.id))) {
+        setMessage({ type: 'info', text: `"${movie.title}" is already in "${playlist.name}"` });
+        setLoading(false);
         return;
       }
-      
-      const updatedPlaylists = [...playlists];
-      updatedPlaylists[playlistIndex].movies.push({
-        ...movie,
-        addedAt: new Date().toISOString()
-      });
-      
-      setPlaylists(updatedPlaylists);
-      localStorage.setItem('playlists', JSON.stringify(updatedPlaylists));
-      
-      if (currentUser) {
-        updateProfile({ playlists: updatedPlaylists });
-      }
-      
-      setMessage({ 
-        type: 'success', 
-        text: `Added "${movie.title}" to "${playlists[playlistIndex].name}"!`
-      });
-      
-      if (onPlaylistSelected) {
-        onPlaylistSelected(selected);
-      }
-      
+      await playlistsService.addMovieToPlaylist(playlist.id, movie.movie_id || movie.id);
+      setMessage({ type: 'success', text: `Added "${movie.title}" to "${playlist.name}"!` });
+      if (onPlaylistSelected) onPlaylistSelected(selected);
       setSelected("");
-      
-      setTimeout(() => {
-        if (onClose) onClose();
-      }, 1500);
-      
+      // Refresh playlists
+      const userPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
+      setPlaylists(userPlaylists);
+      setTimeout(() => { if (onClose) onClose(); }, 1500);
     } catch (err) {
-      console.error("Error adding movie to playlist:", err);
       setMessage({ type: 'error', text: 'Something went wrong' });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCreatePlaylist = () => {
+  const handleCreatePlaylist = async () => {
     if (!newPlaylistName.trim()) {
       setMessage({ type: 'error', text: 'Please enter a playlist name' });
       return;
     }
-    
+    setLoading(true);
     try {
-      const newPlaylist = {
-        id: Date.now().toString(),
+      const newPlaylist = await playlistsService.createPlaylist({
         name: newPlaylistName.trim(),
-        movies: [{ 
-          ...movie,
-          addedAt: new Date().toISOString()
-        }],
-        createdAt: new Date().toISOString()
-      };
-      
-      const updatedPlaylists = [...playlists, newPlaylist];
-      
-      setPlaylists(updatedPlaylists);
-      localStorage.setItem('playlists', JSON.stringify(updatedPlaylists));
-      
-      if (currentUser) {
-        updateProfile({ playlists: updatedPlaylists });
-      }
-      
-      setMessage({ 
-        type: 'success', 
-        text: `Created "${newPlaylistName}" and added "${movie.title}"!`
+        user_id: currentUser.id,
+        status: 'private'
       });
-      
+      await playlistsService.addMovieToPlaylist(newPlaylist.playlist_id, movie.movie_id || movie.id);
+      setMessage({ type: 'success', text: `Created "${newPlaylistName}" and added "${movie.title}"!` });
       setNewPlaylistName("");
       setShowCreateNew(false);
-      
-      setTimeout(() => {
-        if (onClose) onClose();
-      }, 1500);
-      
+      // Refresh playlists
+      const userPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
+      setPlaylists(userPlaylists);
+      setTimeout(() => { if (onClose) onClose(); }, 1500);
     } catch (err) {
-      console.error("Error creating playlist:", err);
       setMessage({ type: 'error', text: 'Something went wrong' });
+    } finally {
+      setLoading(false);
     }
   };
 

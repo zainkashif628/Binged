@@ -95,7 +95,7 @@ const MoviePage = () => {
       content: newReview,
       vote: newRating,
       created: new Date().toISOString(),
-      user_id: "e88bbdb8-b50f-4c4c-96e8-c4ba1a1c7fc3"
+      user_id: currentUser.id
       // user_id: moviesService.getUser().id,
     };
     try {
