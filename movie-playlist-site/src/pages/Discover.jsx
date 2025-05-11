@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { searchMovies, getMovieGenres, discoverMovies } from "../services/tmdbService";
+import { genresService, moviesService } from "../services/databaseSupabase";
 import MovieCard from "../components/MovieCard";
 import { useTheme } from "../contexts/ThemeContext";
 import "./Discover.css";
@@ -25,7 +26,7 @@ const Discover = () => {
     // Load movie genres on component mount
     const loadGenres = async () => {
       try {
-        const genreData = await getMovieGenres();
+        const genreData = await genresService.getGenres();
         setGenres(genreData);
       } catch (error) {
         console.error("Failed to load genres:", error);
@@ -36,9 +37,7 @@ const Discover = () => {
     const loadInitialMovies = async () => {
       setIsLoading(true);
       try {
-        const initialMovies = await discoverMovies({
-          sort_by: "popularity.desc"
-        });
+        const initialMovies = await moviesService.getPopularMovies();
         setResults(initialMovies);
       } catch (error) {
         console.error("Failed to load initial movies:", error);
@@ -60,20 +59,20 @@ const Discover = () => {
       
       if (query) {
         // If there's a search query, use search endpoint
-        data = await searchMovies(query, {
+        data = await moviesService.searchMovies(query, {
           year: yearFilter,
-          vote_average: ratingFilter ? `${ratingFilter},10` : ""
+          vote_avg: ratingFilter ? `${ratingFilter},10` : ""
         });
       } else {
         // Otherwise use discover endpoint with filters
         const filters = {
           sort_by: sortBy,
           with_genres: selectedGenre,
-          primary_release_year: yearFilter,
-          "vote_average.gte": ratingFilter
+          release_year: yearFilter,
+          "vote_avg.gte": ratingFilter
         };
         
-        data = await discoverMovies(filters);
+        data = await moviesService.discoverMovies(filters);
       }
       
       setResults(data);
@@ -92,8 +91,8 @@ const Discover = () => {
       const data = await discoverMovies({
         sort_by: sortBy,
         with_genres: genreId,
-        primary_release_year: yearFilter,
-        "vote_average.gte": ratingFilter
+        release_year: yearFilter,
+        "vote_avg": {gte: ratingFilter}
       });
       
       setResults(data);
@@ -166,10 +165,10 @@ const Discover = () => {
                   onChange={(e) => setSortBy(e.target.value)}
                 >
                   <option value="popularity.desc">Popularity (High to Low)</option>
-                  <option value="vote_average.desc">Rating (High to Low)</option>
-                  <option value="primary_release_date.desc">Release Date (Newest)</option>
-                  <option value="primary_release_date.asc">Release Date (Oldest)</option>
-                  <option value="original_title.asc">Title (A-Z)</option>
+                  <option value="vote_avg.desc">Rating (High to Low)</option>
+                  <option value="release_date.desc">Release Date (Newest)</option>
+                  <option value="release_date.asc">Release Date (Oldest)</option>
+                  <option value="title.asc">Title (A-Z)</option>
                 </select>
               </div>
               
@@ -192,11 +191,11 @@ const Discover = () => {
             >
               All
             </button>
-            {genres.slice(0, 14).map((genre) => (
+            {genres.map((genre) => (
               <button 
-                key={genre.id}
-                className={`genre-button ${selectedGenre === genre.id ? 'active' : ''}`}
-                onClick={() => handleGenreClick(genre.id)}
+                key={genre.genre_id}
+                className={`genre-button ${selectedGenre === genre.genre_id ? 'active' : ''}`}
+                onClick={() => handleGenreClick(genre.genre_id)}
               >
                 {genre.name}
               </button>
@@ -206,8 +205,8 @@ const Discover = () => {
           {/* Results heading */}
           <div className="results-heading">
             <h2>
-              {selectedGenre 
-                ? `${genres.find(g => g.id === selectedGenre)?.name} Movies` 
+              {selectedGenre
+                ? `${genres.find(g => g.genre_id === selectedGenre)?.name} Movies`
                 : 'Popular Movies'}
             </h2>
             <span className="results-count">{results.length} movies found</span>
@@ -222,7 +221,7 @@ const Discover = () => {
             <div className="movie-grid">
               {results.map((movie) => (
                 <MovieCard 
-                  key={movie.id} 
+                  key={movie.movie_id} 
                   movie={movie} 
                   showAddToPlaylist 
                   onAddToPlaylist={handleAddToPlaylist}

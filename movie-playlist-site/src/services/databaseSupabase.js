@@ -198,6 +198,31 @@ export const moviesService = {
     })) };
   },
 
+  // discover movies by filters
+  async discoverMovies(filters) {
+    const { data, error } = await supabase
+      .from('movie')
+      .select('*')
+      .match(filters)
+      .order('popularity', { ascending: false });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  // Search movies by title
+  async searchMovies(query, filters) {
+    const { data, error } = await supabase
+      .from('movie')
+      .select('*')
+      .ilike('title', `%${query}%`)
+      .match(filters)
+      .order('popularity', { ascending: false });
+    
+    if (error) throw error;
+    return data;
+  },
+
   // Get movie reviews
   async getMovieReviews(id) {
     const { data, error } = await supabase
@@ -276,6 +301,30 @@ export const moviesService = {
       .from('movies')
       .delete()
       .eq('id', id);
+    
+    if (error) throw error;
+    return data;
+  }
+};
+
+export const genresService = {
+  // Get all genres
+  async getGenres() {
+    const { data, error } = await supabase
+      .from('genre')
+      .select('*');
+    
+    if (error) throw error;
+    return data;
+  },
+
+  // Get a specific genre by id
+  async getGenreById(id) {
+    const { data, error } = await supabase
+      .from('genre')
+      .select('*')
+      .eq('genre_id', id)
+      .single();
     
     if (error) throw error;
     return data;
