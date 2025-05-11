@@ -200,11 +200,63 @@ export const moviesService = {
 
   // discover movies by filters
   async discoverMovies(filters) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('movie')
-      .select('*')
-      .match(filters)
-      .order('popularity', { ascending: false });
+      .select(`
+        *,
+        movie_genre!inner (
+          genre_id,
+          genre (
+            name
+          )
+        )
+      `);
+
+    // Apply genre filter if specified
+    if (filters.genres && filters.genres.length > 0) {
+      // Use in operator to match any of the selected genres
+      query = query
+        .in('movie_genre.genre_id', filters.genres);
+    } else {
+      // If no genre filter, remove the inner join to get all movies
+      query = supabase
+        .from('movie')
+        .select(`
+          *,
+          movie_genre (
+            genre_id,
+            genre (
+              name
+            )
+          )
+        `);
+    }
+
+    // Apply year filter if specified
+    if (filters.release_year) {
+      const startDate = `${filters.release_year}-01-01`;
+      const endDate = `${filters.release_year}-12-31`;
+      query = query
+        .gte('release_date', startDate)
+        .lte('release_date', endDate);
+    }
+
+    // Apply rating filter if specified
+    if (filters['vote_avg.gte']) {
+      query = query
+        .gte('vote_avg', parseFloat(filters['vote_avg.gte']));
+    }
+
+    // Apply sorting
+    if (filters.sort_by) {
+      const [field, order] = filters.sort_by.split('.');
+      query = query.order(field, { ascending: order === 'asc' });
+    } else {
+      // Default sorting by popularity
+      query = query.order('popularity', { ascending: false });
+    }
+
+    const { data, error } = await query;
     
     if (error) throw error;
     return data;
@@ -212,12 +264,45 @@ export const moviesService = {
 
   // Search movies by title
   async searchMovies(query, filters) {
-    const { data, error } = await supabase
+    let supabaseQuery = supabase
       .from('movie')
-      .select('*')
-      .ilike('title', `%${query}%`)
-      .match(filters)
-      .order('popularity', { ascending: false });
+      .select(`
+        *,
+        movie_genre (
+          genre_id,
+          genre (
+            name
+          )
+        )
+      `)
+      .ilike('title', `%${query}%`);
+
+    // Apply genre filter if specified
+    if (filters.genres && filters.genres.length > 0) {
+      supabaseQuery = supabaseQuery
+        .in('movie_genre.genre_id', filters.genres);
+    }
+
+    // Apply year filter if specified
+    if (filters.year) {
+      const startDate = `${filters.year}-01-01`;
+      const endDate = `${filters.year}-12-31`;
+      supabaseQuery = supabaseQuery
+        .gte('release_date', startDate)
+        .lte('release_date', endDate);
+    }
+
+    // Apply rating filter if specified
+    if (filters.vote_avg) {
+      const [minRating] = filters.vote_avg.split(',');
+      supabaseQuery = supabaseQuery
+        .gte('vote_avg', parseFloat(minRating));
+    }
+
+    // Default sorting by popularity
+    supabaseQuery = supabaseQuery.order('popularity', { ascending: false });
+
+    const { data, error } = await supabaseQuery;
     
     if (error) throw error;
     return data;

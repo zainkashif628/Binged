@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { searchMovies, getMovieGenres, discoverMovies } from "../services/tmdbService";
 import { genresService, moviesService } from "../services/databaseSupabase";
 import MovieCard from "../components/MovieCard";
 import { useTheme } from "../contexts/ThemeContext";
@@ -10,7 +9,7 @@ const Discover = () => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [genres, setGenres] = useState([]);
-  const [selectedGenre, setSelectedGenre] = useState(null);
+  const [selectedGenres, setSelectedGenres] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   
   // Search filter states
@@ -61,13 +60,14 @@ const Discover = () => {
         // If there's a search query, use search endpoint
         data = await moviesService.searchMovies(query, {
           year: yearFilter,
-          vote_avg: ratingFilter ? `${ratingFilter},10` : ""
+          vote_avg: ratingFilter ? `${ratingFilter},10` : "",
+          genres: selectedGenres
         });
       } else {
         // Otherwise use discover endpoint with filters
         const filters = {
           sort_by: sortBy,
-          with_genres: selectedGenre,
+          genres: selectedGenres,
           release_year: yearFilter,
           "vote_avg.gte": ratingFilter
         };
@@ -84,15 +84,28 @@ const Discover = () => {
   };
   
   const handleGenreClick = async (genreId) => {
-    setSelectedGenre(genreId);
     setIsLoading(true);
     
     try {
-      const data = await discoverMovies({
+      let newSelectedGenres;
+      
+      if (genreId === null) {
+        // If "All" is clicked, clear all selections
+        newSelectedGenres = [];
+      } else {
+        // Toggle the selected genre
+        newSelectedGenres = selectedGenres.includes(genreId)
+          ? selectedGenres.filter(id => id !== genreId)
+          : [...selectedGenres, genreId];
+      }
+      
+      setSelectedGenres(newSelectedGenres);
+      
+      const data = await moviesService.discoverMovies({
         sort_by: sortBy,
-        with_genres: genreId,
+        genres: newSelectedGenres,
         release_year: yearFilter,
-        "vote_avg": {gte: ratingFilter}
+        "vote_avg.gte": ratingFilter
       });
       
       setResults(data);
@@ -186,7 +199,7 @@ const Discover = () => {
           {/* Genre buttons */}
           <div className="genre-buttons">
             <button 
-              className={`genre-button ${selectedGenre === null ? 'active' : ''}`}
+              className={`genre-button ${selectedGenres.length === 0 ? 'active' : ''}`}
               onClick={() => handleGenreClick(null)}
             >
               All
@@ -194,7 +207,7 @@ const Discover = () => {
             {genres.map((genre) => (
               <button 
                 key={genre.genre_id}
-                className={`genre-button ${selectedGenre === genre.genre_id ? 'active' : ''}`}
+                className={`genre-button ${selectedGenres.includes(genre.genre_id) ? 'active' : ''}`}
                 onClick={() => handleGenreClick(genre.genre_id)}
               >
                 {genre.name}
@@ -205,8 +218,8 @@ const Discover = () => {
           {/* Results heading */}
           <div className="results-heading">
             <h2>
-              {selectedGenre
-                ? `${genres.find(g => g.genre_id === selectedGenre)?.name} Movies`
+              {selectedGenres.length > 0
+                ? `${selectedGenres.length} Genre${selectedGenres.length > 1 ? 's' : ''} Selected`
                 : 'Popular Movies'}
             </h2>
             <span className="results-count">{results.length} movies found</span>
