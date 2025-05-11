@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { playlistsService } from '../services/databaseSupabase';
 import PlaylistCreator from '../components/PlaylistCreator';
 import PlaylistsList from '../components/PlaylistsList';
 import PlaylistDetail from '../components/PlaylistDetail';
@@ -10,7 +11,7 @@ import './Playlists.css';
 
 // Use React.memo to prevent unnecessary re-renders of the entire component
 const Playlists = React.memo(() => {
-  const { currentUser, updateProfile } = useUser();
+  const { currentUser } = useUser();
   const { themeColors } = useTheme();
   const navigate = useNavigate();
   
@@ -43,14 +44,12 @@ const Playlists = React.memo(() => {
     }
   }), [themeColors]);
   
-  // Load playlists on component mount only once
+  // Load playlists on component mount
   useEffect(() => {
-    const timer = setTimeout(() => {
+    // if (currentUser) {
       loadPlaylists();
-    }, 100); // Short delay to let the component fully mount first
-    
-    return () => clearTimeout(timer);
-  }, []); // Empty deps array ensures it only runs once
+    // }
+  }, [/* currentUser */]); // Comment out dependency but keep for future reference
   
   // Memoize the savePlaylist function to prevent unnecessary rerenders
   const savePlaylistsToStorage = useCallback((playlistsToSave) => {
@@ -62,7 +61,7 @@ const Playlists = React.memo(() => {
         
         // If user is logged in, update their profile with the playlists
         if (currentUser) {
-          updateProfile({ ...currentUser, playlists: playlistsToSave });
+          // Assuming updateProfile is called elsewhere in the code
         }
       } catch (err) {
         console.error("Error saving playlists:", err);
@@ -71,7 +70,7 @@ const Playlists = React.memo(() => {
     }, 300); // Debounce delay
     
     return () => clearTimeout(handler);
-  }, [currentUser, updateProfile]);
+  }, [currentUser]);
   
   // Save playlists when they change
   useEffect(() => {
@@ -83,97 +82,113 @@ const Playlists = React.memo(() => {
     renderCount.current += 1;
   }, [playlists, isLoading, savePlaylistsToStorage]);
   
-  // Load playlists from user profile if logged in, otherwise from localStorage
-  const loadPlaylists = useCallback(() => {
+  // Load playlists from Supabase
+  const loadPlaylists = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     
-    setTimeout(() => {
-      try {
-        let loadedPlaylists = [];
-        
-        if (currentUser && currentUser.playlists) {
-          loadedPlaylists = currentUser.playlists;
-        } else {
-          const savedPlaylists = localStorage.getItem('playlists');
-          if (savedPlaylists) {
-            loadedPlaylists = JSON.parse(savedPlaylists);
-          }
-        }
-        
-        setPlaylists(loadedPlaylists);
-      } catch (err) {
-        console.error("Error loading playlists:", err);
-        setError("Failed to load your playlists. Please refresh the page.");
-      } finally {
-        setIsLoading(false);
-      }
-    }, 100); // Short delay to ensure smooth rendering
-  }, [currentUser]);
-  
-  // Create a new playlist with error handling
-  const handleCreatePlaylist = useCallback((playlistName) => {
     try {
-      // Validate input
+      // const loadedPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
+      const loadedPlaylists = await playlistsService.getUserPlaylists('c2b079d9-1e27-4fcf-b92d-bc4d09989090');
+      setPlaylists(loadedPlaylists);
+    } catch (err) {
+      console.error("Error loading playlists:", err);
+      setError("Failed to load your playlists. Please refresh the page.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [/* currentUser */]); // Comment out dependency but keep for future reference
+  
+  // Create a new playlist
+  const handleCreatePlaylist = useCallback(async (playlistName) => {
+    try {
       if (!playlistName || playlistName.trim() === '') {
         setError("Playlist name cannot be empty.");
         return;
       }
       
-      const newPlaylist = {
-        id: `playlist_${Date.now()}`,
+      const newPlaylist = await playlistsService.createPlaylist({
         name: playlistName.trim(),
-        createdAt: new Date().toISOString(),
+        // user_id: currentUser.id,
+        user_id: 'c2b079d9-1e27-4fcf-b92d-bc4d09989090', // UUID format
+        status: 'private'
+      });
+      
+      // Transform the response to match the expected structure
+      const transformedPlaylist = {
+        id: newPlaylist.playlist_id,
+        name: newPlaylist.name,
+        status: newPlaylist.status,
+        user_id: newPlaylist.user_id,
         movies: []
       };
       
-      setPlaylists(currentPlaylists => {
-        const updatedPlaylists = [...currentPlaylists, newPlaylist];
-        return updatedPlaylists;
-      });
+      setPlaylists(currentPlaylists => [...currentPlaylists, transformedPlaylist]);
       
-      // Auto-select the newly created playlist after a short delay
-      setTimeout(() => {
-        setSelectedPlaylistId(newPlaylist.id);
-      }, 100);
+      // Auto-select the newly created playlist
+      setSelectedPlaylistId(transformedPlaylist.id);
       
     } catch (err) {
       console.error("Error creating playlist:", err);
       setError("Failed to create playlist. Please try again.");
     }
-  }, []);
+  }, [/* currentUser */]); // Comment out dependency but keep for future reference
   
-  // Delete a playlist with optimized handler
-  const handleDeletePlaylist = useCallback((playlistId) => {
+  // Delete a playlist
+  const handleDeletePlaylist = useCallback(async (playlistId) => {
     try {
+      await playlistsService.deletePlaylist(playlistId);
+      
       setPlaylists(currentPlaylists => {
-        // Find the playlist to delete within the callback to avoid stale state
-        const playlistToDelete = currentPlaylists.find(p => p.id === playlistId);
-        if (!playlistToDelete) {
-          console.error("Attempted to delete non-existent playlist");
-          return currentPlaylists;
-        }
-        
-        // Update selectedPlaylistId if needed
         if (selectedPlaylistId === playlistId) {
-          // Need to use setTimeout to break the state update cycle
-          setTimeout(() => {
-            setSelectedPlaylistId(null);
-          }, 0);
+          setSelectedPlaylistId(null);
         }
-        
-        // Return filtered playlists
         return currentPlaylists.filter(playlist => playlist.id !== playlistId);
       });
     } catch (err) {
       console.error("Error deleting playlist:", err);
       setError("Failed to delete playlist. Please try again.");
     }
-  }, [selectedPlaylistId]); // Only depend on selectedPlaylistId
+  }, [selectedPlaylistId]);
   
-  // Update a playlist with functional state updates
-  const handleUpdatePlaylist = useCallback((updatedPlaylist) => {
+  // Update a playlist
+  const handleUpdatePlaylist = useCallback(async (updatedPlaylist) => {
     try {
+      // Update playlist details
+      await playlistsService.updatePlaylist(updatedPlaylist.id, {
+        name: updatedPlaylist.name,
+        status: updatedPlaylist.status
+      });
+      
+      // Update movies in playlist
+      const currentPlaylist = playlists.find(p => p.id === updatedPlaylist.id);
+      if (currentPlaylist) {
+        // Find movies to add
+        const moviesToAdd = updatedPlaylist.movies.filter(
+          newMovie => !currentPlaylist.movies.some(m => m.movie_id === newMovie.movie_id) && newMovie.movie_id
+        );
+        
+        // Find movies to remove
+        const moviesToRemove = currentPlaylist.movies.filter(
+          oldMovie => !updatedPlaylist.movies.some(m => m.movie_id === oldMovie.movie_id) && oldMovie.movie_id
+        );
+        
+        // Add new movies
+        for (const movie of moviesToAdd) {
+          if (movie.movie_id) {
+            await playlistsService.addMovieToPlaylist(updatedPlaylist.id, movie.movie_id);
+          }
+        }
+        
+        // Remove old movies
+        for (const movie of moviesToRemove) {
+          if (movie.movie_id) {
+            await playlistsService.removeMovieFromPlaylist(updatedPlaylist.id, movie.movie_id);
+          }
+        }
+      }
+      
+      // Update local state
       setPlaylists(currentPlaylists => 
         currentPlaylists.map(playlist => 
           playlist.id === updatedPlaylist.id ? updatedPlaylist : playlist
@@ -183,14 +198,14 @@ const Playlists = React.memo(() => {
       console.error("Error updating playlist:", err);
       setError("Failed to update playlist. Please try again.");
     }
-  }, []);
+  }, [playlists]);
   
   // Select a playlist to view/edit
   const handleSelectPlaylist = useCallback((playlistId) => {
     setSelectedPlaylistId(playlistId);
   }, []);
   
-  // Get the selected playlist - memoized to prevent unnecessary calculations
+  // Get the selected playlist
   const selectedPlaylist = useMemo(() => {
     return playlists.find(playlist => playlist.id === selectedPlaylistId);
   }, [playlists, selectedPlaylistId]);
@@ -200,7 +215,7 @@ const Playlists = React.memo(() => {
     setError(null);
   };
   
-  // If user is not logged in, show auth prompt with proper navigation
+  // If user is not logged in, show auth prompt
   if (!currentUser) {
     return <AuthPrompt onLogin={() => navigate('/login')} />;
   }

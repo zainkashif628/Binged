@@ -72,9 +72,6 @@ const PlaylistItem = memo(({ playlist, isSelected, onSelect, onDelete }) => {
           <span className="movie-count" style={itemStyles.count}>
             {playlist.movies?.length || 0} movies
           </span>
-          <span className="playlist-date">
-            {formatDate(playlist.createdAt)}
-          </span>
         </div>
       </div>
       <button 

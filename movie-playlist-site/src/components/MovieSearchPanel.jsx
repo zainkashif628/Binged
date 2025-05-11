@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { searchMovies } from '../services/tmdbService';
 import './MovieSearchPanel.css';
 
-const MovieSearchPanel = ({ onAddMovie }) => {
+const MovieSearchPanel = ({ onAddMovie, existingMovies = [] }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,6 +48,10 @@ const MovieSearchPanel = ({ onAddMovie }) => {
       vote_average: movie.vote_average
     });
   };
+
+  const isMovieInPlaylist = (movieId) => {
+    return existingMovies.some(movie => movie.id === movieId);
+  };
   
   return (
     <div className="movie-search-panel">
@@ -76,29 +80,33 @@ const MovieSearchPanel = ({ onAddMovie }) => {
         
         {!isLoading && searchResults.length > 0 && (
           <div className="search-results-grid">
-            {searchResults.map(movie => (
-              <div key={movie.id} className="movie-search-item">
-                <div className="search-poster-container">
-                  <img 
-                    src={movie.poster_path ? `https://image.tmdb.org/t/p/w200${movie.poster_path}` : 'https://via.placeholder.com/200x300?text=No+Image'}
-                    alt={movie.title}
-                    className="search-movie-poster"
-                  />
-                </div>
-                <div className="search-movie-info">
-                  <h5 className="search-movie-title">{movie.title}</h5>
-                  <div className="search-movie-year">
-                    {movie.release_date && new Date(movie.release_date).getFullYear()}
+            {searchResults.map(movie => {
+              const isAdded = isMovieInPlaylist(movie.id);
+              return (
+                <div key={movie.id} className="movie-search-item">
+                  <div className="search-poster-container">
+                    <img 
+                      src={movie.poster_path ? `https://image.tmdb.org/t/p/w200${movie.poster_path}` : 'https://via.placeholder.com/200x300?text=No+Image'}
+                      alt={movie.title}
+                      className="search-movie-poster"
+                    />
                   </div>
-                  <button 
-                    className="add-to-playlist-btn"
-                    onClick={() => handleAddToPlaylist(movie)}
-                  >
-                    <span className="add-icon">+</span> Add
-                  </button>
+                  <div className="search-movie-info">
+                    <h5 className="search-movie-title">{movie.title}</h5>
+                    <div className="search-movie-year">
+                      {movie.release_date && new Date(movie.release_date).getFullYear()}
+                    </div>
+                    <button 
+                      className={`add-to-playlist-btn ${isAdded ? 'added' : ''}`}
+                      onClick={() => handleAddToPlaylist(movie)}
+                      disabled={isAdded}
+                    >
+                      {isAdded ? 'Added' : <><span className="add-icon">+</span> Add</>}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         

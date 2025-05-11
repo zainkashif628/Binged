@@ -200,6 +200,9 @@ export const moviesService = {
 
   // discover movies by filters
   async discoverMovies(filters) {
+    const DEFAULT_LIMIT = 32; // Default number of results
+    const limit = filters.limit || DEFAULT_LIMIT;
+
     let query = supabase
       .from('movie')
       .select(`
@@ -256,6 +259,9 @@ export const moviesService = {
       query = query.order('popularity', { ascending: false });
     }
 
+    // Apply limit
+    query = query.limit(limit);
+
     const { data, error } = await query;
     
     if (error) throw error;
@@ -264,6 +270,9 @@ export const moviesService = {
 
   // Search movies by title
   async searchMovies(query, filters) {
+    const DEFAULT_LIMIT = 32; // Default number of results
+    const limit = filters.limit || DEFAULT_LIMIT;
+
     let supabaseQuery = supabase
       .from('movie')
       .select(`
@@ -300,7 +309,9 @@ export const moviesService = {
     }
 
     // Default sorting by popularity
-    supabaseQuery = supabaseQuery.order('popularity', { ascending: false });
+    supabaseQuery = supabaseQuery
+      .order('popularity', { ascending: false })
+      .limit(limit);
 
     const { data, error } = await supabaseQuery;
     
@@ -422,54 +433,138 @@ export const playlistsService = {
   async createPlaylist(playlistData) {
     const { data, error } = await supabase
       .from('playlists')
-      .insert([playlistData]);
-    
-    if (error) throw error;
-    return data;
-  },
-
-  // Get all playlists
-  async getPlaylists() {
-    const { data, error } = await supabase
-      .from('playlists')
-      .select('*');
-    
-    if (error) throw error;
-    return data;
-  },
-
-  // Get a specific playlist by id
-  async getPlaylistById(id) {
-    const { data, error } = await supabase
-      .from('playlists')
-      .select('*')
-      .eq('id', id)
+      .insert([{
+        name: playlistData.name || 'playlist',
+        status: playlistData.status || 'private',
+        user_id: playlistData.user_id // This should be a UUID
+      }])
+      .select()
       .single();
     
     if (error) throw error;
     return data;
   },
 
-  // Update a playlist
-  async updatePlaylist(id, updates) {
+  // Get all playlists for a user
+  async getUserPlaylists(userId) {
     const { data, error } = await supabase
       .from('playlists')
-      .update(updates)
-      .eq('id', id);
+      .select(`
+        playlist_id,
+        name,
+        status,
+        user_id,
+        movie_playlists (
+          movie_id,
+          movie (
+            *
+          )
+        )
+      `)
+      .eq('user_id', userId) // userId should be a UUID
+      .order('playlist_id', { ascending: false });
+    
+    if (error) throw error;
+
+    // Transform the data to match the expected structure
+    return data.map(playlist => ({
+      id: playlist.playlist_id,
+      name: playlist.name,
+      status: playlist.status,
+      user_id: playlist.user_id,
+      movies: playlist.movie_playlists.map(mp => mp.movie)
+    }));
+  },
+
+  // Get a specific playlist by id
+  async getPlaylistById(playlistId) {
+    const { data, error } = await supabase
+      .from('playlists')
+      .select(`
+        playlist_id,
+        name,
+        status,
+        user_id,
+        movie_playlists (
+          movie_id,
+          movie (
+            *
+          )
+        )
+      `)
+      .eq('playlist_id', playlistId)
+      .single();
+    
+    if (error) throw error;
+
+    // Transform the data to match the expected structure
+    return {
+      id: data.playlist_id,
+      name: data.name,
+      status: data.status,
+      user_id: data.user_id,
+      movies: data.movie_playlists.map(mp => mp.movie)
+    };
+  },
+
+  // Update a playlist
+  async updatePlaylist(playlistId, updates) {
+    const { data, error } = await supabase
+      .from('playlists')
+      .update({
+        name: updates.name,
+        status: updates.status
+      })
+      .eq('playlist_id', playlistId)
+      .select()
+      .single();
     
     if (error) throw error;
     return data;
   },
 
   // Delete a playlist
-  async deletePlaylist(id) {
-    const { data, error } = await supabase
+  async deletePlaylist(playlistId) {
+    // First delete all movie associations
+    const { error: movieError } = await supabase
+      .from('movie_playlists')
+      .delete()
+      .eq('playlist_id', playlistId);
+    
+    if (movieError) throw movieError;
+
+    // Then delete the playlist itself
+    const { error } = await supabase
       .from('playlists')
       .delete()
-      .eq('id', id);
+      .eq('playlist_id', playlistId);
     
     if (error) throw error;
-    return data;
+  },
+
+  // Add a movie to a playlist
+  async addMovieToPlaylist(playlistId, movieId) {
+    const { error } = await supabase
+      .from('movie_playlists')
+      .insert([{
+        playlist_id: playlistId,
+        movie_id: movieId
+      }]);
+    
+    if (error) throw error;
+  },
+
+  // Remove a movie from a playlist
+  async removeMovieFromPlaylist(playlistId, movieId) {
+    const { error } = await supabase
+      .from('movie_playlists')
+      .delete()
+      .match({
+        playlist_id: playlistId,
+        movie_id: movieId
+      });
+    
+    if (error) throw error;
   }
 };
 

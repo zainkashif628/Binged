@@ -107,25 +107,37 @@
 }
 
 .add-to-playlist-btn {
-  width: 100%;
-  padding: 8px;
-  background-color: rgba(52, 152, 219, 0.8);
+  background-color: var(--primary);
   color: white;
   border: none;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 4px;
   cursor: pointer;
+  font-size: 0.9rem;
   transition: all 0.2s ease;
-  margin-top: 8px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
 }
 
-.add-to-playlist-btn:hover {
-  background-color: #3498db;
-  box-shadow: 0 0 8px rgba(52, 152, 219, 0.5);
+.add-to-playlist-btn:hover:not(:disabled) {
+  background-color: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
+.add-to-playlist-btn:disabled {
+  background-color: #4CAF50;
+  cursor: default;
+  opacity: 0.8;
+}
+
+.add-to-playlist-btn.added {
+  background-color: #4CAF50;
+}
+
+.add-icon {
+  font-size: 1.1rem;
+  font-weight: bold;
 }
 
 @media (max-width: 768px) {

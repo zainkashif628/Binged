@@ -149,7 +149,10 @@ const PlaylistDetail = memo(({ playlist, onUpdatePlaylist }) => {
       </div>
       
       {isSearchOpen && (
-        <MovieSearchPanel onAddMovie={handleAddMovie} />
+        <MovieSearchPanel 
+          onAddMovie={handleAddMovie} 
+          existingMovies={playlist.movies || []}
+        />
       )}
       
       <div className="playlist-movies">

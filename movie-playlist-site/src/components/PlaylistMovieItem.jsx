@@ -15,7 +15,7 @@ const PlaylistMovieItem = ({ movie, onRemove }) => {
   // Format the poster URL or use a fallback image
   const posterUrl = movie.poster_path 
     ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-    : 'https://via.placeholder.com/500x750?text=No+Poster';
+    : 'https://dummyimage.com/500x750/000/fff&text=No+Poster';
 
   // Check if movie is in liked playlist when component mounts
   useEffect(() => {
