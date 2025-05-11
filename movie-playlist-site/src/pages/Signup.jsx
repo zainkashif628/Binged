@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { signUpWithEmail } from '../services/signUp.js'; // Adjust the path accordingly
 import './Auth.css';
 
@@ -17,7 +17,6 @@ const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showConfirmationMessage, setShowConfirmationMessage] = useState(false);
-  const navigate = useNavigate();
   const isNavigating = useRef(false);
 
   const handleSignup = async (e) => {
