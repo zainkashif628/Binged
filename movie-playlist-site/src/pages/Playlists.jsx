@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { playlistsService } from '../services/databaseSupabase';
+import { playlistsService, watchedMoviesService } from '../services/databaseSupabase';
 import PlaylistCreator from '../components/PlaylistCreator';
 import PlaylistsList from '../components/PlaylistsList';
 import PlaylistDetail from '../components/PlaylistDetail';
@@ -20,6 +20,7 @@ const Playlists = React.memo(() => {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [watchedMovies, setWatchedMovies] = useState([]);
   
   // Stabilize component render cycles with a render counter
   const renderCount = React.useRef(0);
@@ -44,12 +45,13 @@ const Playlists = React.memo(() => {
     }
   }), [themeColors]);
   
-  // Load playlists on component mount
+  // Load playlists and watched movies on mount
   useEffect(() => {
-    // if (currentUser) {
+    if (currentUser) {
       loadPlaylists();
-    // }
-  }, [/* currentUser */]); // Comment out dependency but keep for future reference
+      loadWatchedMovies();
+    }
+  }, [currentUser]);
   
   // Memoize the savePlaylist function to prevent unnecessary rerenders
   const savePlaylistsToStorage = useCallback((playlistsToSave) => {
@@ -88,7 +90,6 @@ const Playlists = React.memo(() => {
     setError(null);
     
     try {
-      // const loadedPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
       const loadedPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
       setPlaylists(loadedPlaylists);
     } catch (err) {
@@ -97,7 +98,16 @@ const Playlists = React.memo(() => {
     } finally {
       setIsLoading(false);
     }
-  }, [/* currentUser */]); // Comment out dependency but keep for future reference
+  }, [currentUser]);
+  
+  const loadWatchedMovies = useCallback(async () => {
+    try {
+      const movies = await watchedMoviesService.getWatchedPlaylist(currentUser.id);
+      setWatchedMovies(movies);
+    } catch (err) {
+      setError("Failed to load your watched movies.");
+    }
+  }, [currentUser]);
   
   // Create a new playlist
   const handleCreatePlaylist = useCallback(async (playlistName) => {
@@ -132,7 +142,7 @@ const Playlists = React.memo(() => {
       console.error("Error creating playlist:", err);
       setError("Failed to create playlist. Please try again.");
     }
-  }, [/* currentUser */]); // Comment out dependency but keep for future reference
+  }, [currentUser]);
   
   // Delete a playlist
   const handleDeletePlaylist = useCallback(async (playlistId) => {
@@ -205,22 +215,18 @@ const Playlists = React.memo(() => {
     setSelectedPlaylistId(playlistId);
   }, []);
   
-  // Combine real playlists with the virtual Watched playlist
+  // Combine watched playlist with real playlists
   const allPlaylists = useMemo(() => {
     if (!currentUser) return playlists;
-    const watched = {
+    const watchedPlaylist = {
       id: 'watched',
       name: 'Watched',
       status: 'special',
       user_id: currentUser.id,
-      movies: currentUser.watchedPlaylist || []
+      movies: watchedMovies
     };
-    // Only add if there are watched movies
-    if (watched.movies && watched.movies.length > 0) {
-      return [watched, ...playlists];
-    }
-    return playlists;
-  }, [playlists, currentUser]);
+    return [watchedPlaylist, ...playlists];
+  }, [watchedMovies, playlists, currentUser]);
   
   // Get the selected playlist
   const selectedPlaylist = useMemo(() => {

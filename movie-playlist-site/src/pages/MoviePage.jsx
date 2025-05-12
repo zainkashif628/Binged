@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
-import { getMovieDetails, getMovieCredits, getMovieReviews, fetchMovieBackdrop } from '../services/tmdbService';
+import { fetchMovieBackdrop } from '../services/tmdbService';
 import { getImdbRating } from '../services/omdbService';
 import { moviesService as supabaseService } from '../services/databaseSupabase';
 import PlaylistDropdown from '../components/PlaylistDropdown';
@@ -17,7 +17,6 @@ const MoviePage = () => {
   const [movie, setMovie] = useState(null);
   const [backdropUrl, setBackdropUrl] = useState(null);
   const [credits, setCredits] = useState(null);
-  const [reviews, setReviews] = useState([]);
   const [userReviews, setUserReviews] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -312,7 +311,7 @@ const MoviePage = () => {
                   onChange={(e) => setNewRating(Number(e.target.value))}
                   style={{ backgroundColor: themeColors.surface, color: themeColors.text }}
                 >
-                  {[ 5, 4, 3, 2, 1].map(num => (
+                  {[ 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(num => (
                     <option key={num} value={num}>
                       {num} {num === 1 ? 'star' : 'stars'}
                     </option>

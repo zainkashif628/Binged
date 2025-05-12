@@ -179,7 +179,7 @@ export async function createUserAfterConfirmation(userId) {
     
     const { data: insertData, error: insertError } = await supabase
       .from('user')
-      .insert(userData)
+      .upsert(userData, { onConflict: ['id'] })
       .select();
 
     if (insertError) {

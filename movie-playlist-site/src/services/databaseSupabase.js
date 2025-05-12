@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { getMovieCredits, fetchMovieBackdrop } from './tmdbService';
+import { fetchMovieBackdrop } from './tmdbService';
 
 // Movies CRUD operations
 export const moviesService = {
@@ -270,53 +270,41 @@ export const moviesService = {
 
   // Search movies by title
   async searchMovies(query, filters) {
-    const DEFAULT_LIMIT = 32; // Default number of results
-    const limit = filters.limit || DEFAULT_LIMIT;
+    if (query) {
+      console.log(query);
+      // Use the fuzzy search RPC for typo-tolerant search
+      const { data, error } = await supabase
+        .rpc('fuzzy_movie_search', { query });
+      if (error) throw error;
+      console.log(data);
+      let results = data;
+      // Optionally filter further by genre/year/rating in JS if filters are provided
+      if (filters) {
+        if (filters.genres && filters.genres.length > 0) {
+          console.log('filters.genres:', filters.genres, typeof filters.genres[0]);
+          results = results.filter(movie => {
+            if (!movie.movie_genre) return false;
+            console.log('movie.movie_genre:', movie.movie_genre, typeof movie.movie_genre[0]?.genre_id);
+            return movie.movie_genre.some(g => filters.genres.includes(Number(g.genre_id)));
+          });
+        }
+        if (filters.year) {
+          results = results.filter(movie => {
+            if (!movie.release_date) return false;
+            return new Date(movie.release_date).getFullYear().toString() === filters.year.toString();
+          });
+        }
 
-    let supabaseQuery = supabase
-      .from('movie')
-      .select(`
-        *,
-        movie_genre (
-          genre_id,
-          genre (
-            name
-          )
-        )
-      `)
-      .ilike('title', `%${query}%`);
-
-    // Apply genre filter if specified
-    if (filters.genres && filters.genres.length > 0) {
-      supabaseQuery = supabaseQuery
-        .in('movie_genre.genre_id', filters.genres);
+        if (filters.vote_avg) {
+          const [minRating] = filters.vote_avg.split(',');
+          results = results.filter(movie => parseFloat(movie.vote_avg || movie.vote_average || 0) >= parseFloat(minRating));
+        }
+      }
+      return results;
+    } else {
+      // Otherwise use discover endpoint with filters
+      return this.discoverMovies(filters);
     }
-
-    // Apply year filter if specified
-    if (filters.year) {
-      const startDate = `${filters.year}-01-01`;
-      const endDate = `${filters.year}-12-31`;
-      supabaseQuery = supabaseQuery
-        .gte('release_date', startDate)
-        .lte('release_date', endDate);
-    }
-
-    // Apply rating filter if specified
-    if (filters.vote_avg) {
-      const [minRating] = filters.vote_avg.split(',');
-      supabaseQuery = supabaseQuery
-        .gte('vote_avg', parseFloat(minRating));
-    }
-
-    // Default sorting by popularity
-    supabaseQuery = supabaseQuery
-      .order('popularity', { ascending: false })
-      .limit(limit);
-
-    const { data, error } = await supabaseQuery;
-    
-    if (error) throw error;
-    return data;
   },
 
   // Get movie reviews
