@@ -85,10 +85,8 @@ const Discover = () => {
   
   const handleGenreClick = async (genreId) => {
     setIsLoading(true);
-    
     try {
       let newSelectedGenres;
-      
       if (genreId === null) {
         // If "All" is clicked, clear all selections
         newSelectedGenres = [];
@@ -98,16 +96,22 @@ const Discover = () => {
           ? selectedGenres.filter(id => id !== genreId)
           : [...selectedGenres, genreId];
       }
-      
       setSelectedGenres(newSelectedGenres);
-      
-      const data = await moviesService.discoverMovies({
+      // Build filters object
+      const filters = {
         sort_by: sortBy,
         genres: newSelectedGenres,
         release_year: yearFilter,
         "vote_avg.gte": ratingFilter
-      });
-      
+      };
+      let data;
+      if (query) {
+        // If there is a search query, use fuzzy search
+        data = await moviesService.searchMovies(query, filters);
+      } else {
+        // Otherwise, just filter by genre
+        data = await moviesService.discoverMovies(filters);
+      }
       setResults(data);
     } catch (error) {
       console.error("Failed to load genre movies:", error);
