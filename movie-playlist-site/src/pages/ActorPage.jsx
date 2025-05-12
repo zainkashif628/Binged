@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../services/supabaseClient';
+import Chatbot from '../components/Chatbot';
 import './ActorPage.css';
 
 const ActorPage = () => {
@@ -113,7 +114,7 @@ const ActorPage = () => {
   // Format the profile URL
   const profileUrl = actor.profile_url 
     ? `https://image.tmdb.org/t/p/w300${actor.profile_url}`
-    : 'https://via.placeholder.com/300x450?text=No+Photo';
+    : 'https://dummyimage.com/300x450/000/fff&text=No+Photo';
   
   // Calculate age if birth date is available and actor is alive
   const calculateAge = () => {
@@ -122,8 +123,8 @@ const ActorPage = () => {
     const birthDate = new Date(actor.birthday);
     let endDate = new Date();
     
-    if (actor.death_date) {
-      endDate = new Date(actor.death_date);
+    if (actor.deathday) {
+      endDate = new Date(actor.deathday);
     }
     
     let age = endDate.getFullYear() - birthDate.getFullYear();
@@ -149,42 +150,44 @@ const ActorPage = () => {
 
   return (
     <div className="actor-page" style={{ backgroundColor: themeColors.background, color: themeColors.text }}>
+      <div className="actor-page-header">
+        <button 
+          onClick={() => navigate(-1)} 
+          className="back-button"
+          style={{ backgroundColor: themeColors.primary }}
+        >
+          ← Back to Movie
+        </button>
+      </div>
       <div className="actor-content">
         <div className="actor-header">
           <div className="profile-container">
             <img src={profileUrl} alt={actor.name} className="profile-image" />
           </div>
-          
           <div className="actor-info">
             <h1>{actor.name}</h1>
-            
             {actor.birthday && (
               <div className="birth-info">
                 <span className="birth-date">Born: {formatDate(actor.birthday)}</span>
-                
                 {actor.place_of_birth && (
                   <span className="birth-place">in {actor.place_of_birth}</span>
                 )}
-                
-                {calculateAge() !== null && !actor.death_date && (
+                {calculateAge() !== null && !actor.deathday && (
                   <span className="age">({calculateAge()} years old)</span>
                 )}
               </div>
             )}
-            
-            {actor.death_date && (
+            {actor.deathday && (
               <div className="death-info">
-                <span>Died: {formatDate(actor.death_date)}</span>
+                <span>Died: {formatDate(actor.deathday)}</span>
                 {calculateAge() !== null && (
                   <span className="age">({calculateAge()} years old)</span>
                 )}
               </div>
             )}
-            
-            {actor.known_for && (
-              <div className="department">{actor.known_for === "Directing" ? "Director" : actor.gender === "female" ? "Actress" : "Actor"}</div>
+            {actor.known_for_department && (
+              <div className="department">Known for: {actor.known_for_department}</div>
             )}
-
             {actor.biography && (
               <div className="biography">
                 <h3>Biography</h3>
@@ -193,13 +196,12 @@ const ActorPage = () => {
             )}
           </div>
         </div>
-        
         {movies.length > 0 && (
           <div className="filmography-section">
             <h2>Filmography</h2>
             <div className="movies-grid">
               {movies.map(movie => (
-                <Link to={`/movie/${movie.movie_id}`} key={movie.movie_id} className="movie-card">
+                <Link to={`/movie/${movie.id || movie.movie_id}`} key={movie.id || movie.movie_id} className="movie-card">
                   <div className="movie-poster-container">
                     {movie.poster_path ? (
                       <img 
@@ -212,14 +214,12 @@ const ActorPage = () => {
                         No Poster
                       </div>
                     )}
-                    
-                    {movie.vote_avg > 0 && (
+                    {(movie.vote_average > 0 || movie.vote_avg > 0) && (
                       <div className="movie-rating" style={{ backgroundColor: `${themeColors.surface}CC` }}>
-                        <span>⭐ {movie.vote_avg.toFixed(1)}</span>
+                        <span>⭐ {(movie.vote_average || movie.vote_avg).toFixed(1)}</span>
                       </div>
                     )}
                   </div>
-                  
                   <div className="movie-details" style={{ backgroundColor: themeColors.surface }}>
                     <h3 className="movie-title">{movie.title}</h3>
                     {movie.release_date && (
@@ -227,25 +227,17 @@ const ActorPage = () => {
                         {new Date(movie.release_date).getFullYear()}
                       </div>
                     )}
-                    {/* {movie.character && (
+                    {movie.character && (
                       <div className="movie-character">
                         as <span>{movie.character}</span>
                       </div>
-                    )} */}
+                    )}
                   </div>
                 </Link>
               ))}
             </div>
           </div>
         )}
-        
-        <button 
-          onClick={() => navigate(-1)} 
-          className="back-button"
-          style={{ backgroundColor: themeColors.primary }}
-        >
-          Back to Movie
-        </button>
       </div>
     </div>
   );

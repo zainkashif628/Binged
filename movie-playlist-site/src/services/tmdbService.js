@@ -44,7 +44,6 @@ export const fetchMovieBackdrop = async (id) => {
     const data = await response.json();
 
     if (!response.ok) throw new Error(data.status_message);
-    console.log("Fetched movie backdrop:", data.backdrop_path);
     return data.backdrop_path; // this is a relative path like "/abc123.jpg"
   } catch (error) {
     console.error('Failed to fetch backdrop path:', error.message);

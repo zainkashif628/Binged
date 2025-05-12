@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
+import { useUser } from '../contexts/UserContext';
 import CryptoJS from 'crypto-js';
 
 export default function LoginForm() {
@@ -11,6 +12,7 @@ export default function LoginForm() {
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { setCurrentUser } = useUser();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -20,7 +22,6 @@ export default function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setMessage('Logging in...');
-
     try {
       // 1. First check if user exists in your custom user table
       const { data: userData, error: userError } = await supabase
@@ -28,7 +29,6 @@ export default function LoginForm() {
         .select('id, username, full_name, password_hash, email')
         .eq('email', formData.email)
         .single();
-
       if (userError) {
         if (userError.code === 'PGRST116') { // Not found
           throw new Error('No account found with this email address');
@@ -36,74 +36,39 @@ export default function LoginForm() {
           throw new Error(`Database error: ${userError.message}`);
         }
       }
-      
       if (!userData) {
         throw new Error('Account not found');
       }
-
-      // 2. Verify the password hash matches
+      // 2. If user has a password_hash, verify it
       if (userData.password_hash && userData.password_hash !== "NEEDS_RESET") {
         // Split the stored hash into salt and hash components
         const [salt, storedHash] = userData.password_hash.split(':');
-        console.log("Full Stored Hash:", userData.password_hash);
-        
         // Calculate hash of provided password with the same salt
         const calculatedHash = CryptoJS.SHA512(formData.password + salt).toString();
-        console.log('Stored Hash:', storedHash);
-        console.log('Calculated Hash:', calculatedHash);
-
         // Compare the calculated hash with the stored hash
         if (calculatedHash !== storedHash) {
           throw new Error('Invalid password');
         }
-        
         // If we get here, password is correct
-        console.log("Password hash verification successful");
-      } else {
-        // Fall back to Supabase Auth if no hash or reset needed
-        console.log("No valid password hash found, falling back to Supabase Auth");
-        const { error: authError } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password
-        });
-
-        if (authError) throw new Error(authError.message);
       }
-
       // 3. Sign in with Supabase Auth to get session
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password
       });
-      
-      if (signInError) {
-        console.error("Auth error after password verification:", signInError);
-        throw new Error("Error establishing session. Please try again.");
+      if (signInError || !authData.session) {
+        throw new Error('Invalid email or password');
       }
-      
-      // 4. Use auth data to check session information
-      console.log("Successfully authenticated with Supabase Auth:", 
-        authData && authData.session ? "Session created" : "No session");
-      
-      // Store additional session info if needed
-      if (authData && authData.session) {
-        localStorage.setItem('sessionExpiry', new Date(authData.session.expires_at).toISOString());
-      }
-      
-      // 5. Store user profile data in localStorage for easy access
-      localStorage.setItem('userProfile', JSON.stringify({
+      // 4. Set user in context only
+      setCurrentUser({
         id: userData.id,
         username: userData.username,
         fullName: userData.full_name,
         email: userData.email
-      }));
-      
-      // Success message and redirect
+      });
       setMessage('✅ Login successful! Redirecting...');
       setTimeout(() => navigate('/dashboard'), 1500);
-      
     } catch (error) {
-      console.error('Login error:', error);
       setMessage(`❌ ${error.message}`);
       setLoading(false);
     }

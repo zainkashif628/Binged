@@ -34,33 +34,46 @@ const PlaylistDropdown = ({ movie, onPlaylistSelected, onClose }) => {
   }, [currentUser]);
 
   const handleAdd = async () => {
+    console.log('handleAdd called, selected:', selected, 'playlists:', playlists);
     if (!selected) {
       setMessage({ type: 'error', text: 'Please select a playlist' });
       return;
     }
     setLoading(true);
     try {
-      const playlist = playlists.find(p => p.id === selected || p.name === selected);
+      // Always compare IDs as strings
+      const playlist = playlists.find(p => String(p.id) === String(selected));
       if (!playlist) {
         setMessage({ type: 'error', text: 'Playlist not found' });
         setLoading(false);
         return;
       }
-      if (playlist.movies.some(m => (m.movie_id || m.id) === (movie.movie_id || movie.id))) {
+      const movieId = movie.movie_id || movie.id;
+      console.log('Attempting to add movie:', { playlistId: playlist.id, movieId, playlist, movie });
+      if (!movieId) {
+        setMessage({ type: 'error', text: 'Invalid movie ID' });
+        setLoading(false);
+        return;
+      }
+      if (playlist.movies.some(m => (m.movie_id || m.id) === movieId)) {
         setMessage({ type: 'info', text: `"${movie.title}" is already in "${playlist.name}"` });
         setLoading(false);
         return;
       }
-      await playlistsService.addMovieToPlaylist(playlist.id, movie.movie_id || movie.id);
+      await playlistsService.addMovieToPlaylist(playlist.id, movieId);
       setMessage({ type: 'success', text: `Added "${movie.title}" to "${playlist.name}"!` });
-      if (onPlaylistSelected) onPlaylistSelected(selected);
+      if (onPlaylistSelected) {
+        console.log('Calling onPlaylistSelected with', playlist.id);
+        onPlaylistSelected(playlist.id);
+      }
       setSelected("");
       // Refresh playlists
       const userPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
       setPlaylists(userPlaylists);
       setTimeout(() => { if (onClose) onClose(); }, 1500);
     } catch (err) {
-      setMessage({ type: 'error', text: 'Something went wrong' });
+      setMessage({ type: 'error', text: 'Something went wrong: ' + (err.message || err.toString()) });
+      console.error('Error in handleAdd:', err);
     } finally {
       setLoading(false);
     }
@@ -85,6 +98,10 @@ const PlaylistDropdown = ({ movie, onPlaylistSelected, onClose }) => {
       // Refresh playlists
       const userPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
       setPlaylists(userPlaylists);
+      if (onPlaylistSelected) {
+        console.log('Calling onPlaylistSelected with', newPlaylist.playlist_id);
+        onPlaylistSelected(newPlaylist.playlist_id);
+      }
       setTimeout(() => { if (onClose) onClose(); }, 1500);
     } catch (err) {
       setMessage({ type: 'error', text: 'Something went wrong' });
@@ -194,8 +211,8 @@ const PlaylistDropdown = ({ movie, onPlaylistSelected, onClose }) => {
               <option value="">Select a playlist...</option>
               {playlists.map((playlist) => (
                 <option 
-                  key={playlist.id || playlist.name} 
-                  value={playlist.id || playlist.name}
+                  key={playlist.id} 
+                  value={playlist.id}
                 >
                   {playlist.name} ({playlist.movies?.length || 0})
                 </option>

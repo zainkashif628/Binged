@@ -4,14 +4,42 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { fetchMovieBackdrop } from '../services/tmdbService';
 import { getImdbRating } from '../services/omdbService';
-import { moviesService as supabaseService } from '../services/databaseSupabase';
+import { usersService, moviesService as supabaseService } from '../services/databaseSupabase';
+import Chatbot from '../components/Chatbot';
 import PlaylistDropdown from '../components/PlaylistDropdown';
 import './MoviePage.css';
+
+// Star Rating Component
+const StarRating = ({ rating, setRating }) => {
+  const [hover, setHover] = useState(0);
+  
+  return (
+    <div className="star-rating">
+      {[...Array(10)].map((_, index) => {
+        const ratingValue = index + 1;
+        
+        return (
+          <button
+            type="button"
+            key={ratingValue}
+            className={`star-btn ${ratingValue <= (hover || rating) ? "active" : ""}`}
+            onClick={() => setRating(ratingValue)}
+            onMouseEnter={() => setHover(ratingValue)}
+            onMouseLeave={() => setHover(0)}
+          >
+            <span className="star">★</span>
+          </button>
+        );
+      })}
+      <span className="rating-value">{rating}/10</span>
+    </div>
+  );
+};
 
 const MoviePage = () => {
   const { movieId } = useParams();
   const { themeColors } = useTheme();
-  const { currentUser } = useUser();
+  const { currentUser, addToDefaultPlaylist, addToWatched } = useUser();
   const navigate = useNavigate();
   
   const [movie, setMovie] = useState(null);
@@ -23,6 +51,10 @@ const MoviePage = () => {
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [newReview, setNewReview] = useState('');
   const [newRating, setNewRating] = useState(5);
+  const [isLiked, setIsLiked] = useState(false);
+  const [isWatched, setIsWatched] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [reviewUsernames, setReviewUsernames] = useState({});
 
   useEffect(() => {
     const fetchMovieData = async () => {
@@ -40,15 +72,9 @@ const MoviePage = () => {
         const creditsData = await supabaseService.getMovieCredits(movieId);
         setCredits(creditsData);
         
-        // Fetch official reviews
-        // const reviewsData = await getMovieReviews(movieId);
-        // setReviews(reviewsData.results || []);
-        
-        // Load user reviews from localStorage
-        const {reviews: fetchedUserReviews} = await supabaseService.getMovieReviews(movieId);
-        if (fetchedUserReviews) {
-          setUserReviews(fetchedUserReviews);
-        }
+        // Fetch user reviews
+        const { reviews: fetchedUserReviews } = await supabaseService.getMovieReviews(movieId);
+        setUserReviews(fetchedUserReviews || []);
         
         setIsLoading(false);
       } catch (err) {
@@ -60,6 +86,50 @@ const MoviePage = () => {
     
     fetchMovieData();
   }, [movieId]);
+
+  // Fetch usernames for all reviews after userReviews is set
+  useEffect(() => {
+    const fetchUsernames = async () => {
+      const uniqueUserIds = [...new Set(userReviews.map(r => r.user_id).filter(Boolean))];
+      const usernames = {};
+      await Promise.all(uniqueUserIds.map(async (userId) => {
+        try {
+          usernames[userId] = await usersService.getUsernameById(userId);
+        } catch (e) {
+          usernames[userId] = 'Unknown';
+        }
+      }));
+      setReviewUsernames(usernames);
+    };
+    if (userReviews.length > 0) {
+      fetchUsernames();
+    } else {
+      setReviewUsernames({});
+    }
+  }, [userReviews]);
+
+  // Check if movie is in liked/watched playlists when component mounts
+  useEffect(() => {
+    if (currentUser && currentUser.playlists && movie) {
+      // Check if in Liked playlist
+      const likedPlaylist = currentUser.playlists.find(p => p.name === 'Liked');
+      if (likedPlaylist) {
+        const isInLiked = likedPlaylist.movies.some(m => m.movie_id === movie.movie_id);
+        setIsLiked(isInLiked);
+      }
+      
+      // Check if in Watched playlist
+      const watchedPlaylist = currentUser.playlists.find(p => p.name === 'Watched');
+      if (watchedPlaylist) {
+        const isInWatched = watchedPlaylist.movies.some(m => m.movie_id === movie.movie_id);
+        setIsWatched(isInWatched);
+      }
+    }
+  }, [currentUser, movie]);
+
+  const handleGoBack = () => {
+    navigate(-1);
+  };
 
   const handleAddToPlaylist = () => {
     if (currentUser) {
@@ -73,55 +143,76 @@ const MoviePage = () => {
   
   const handlePlaylistSelected = (playlistId) => {
     setShowAddToPlaylist(false);
+    setIsAdding(true);
+    // Show checkmark for 1.5 seconds
+    setTimeout(() => {
+      setIsAdding(false);
+    }, 1500);
     // Implementation would connect to your playlists state management
     console.log(`Movie ${movie.title} added to playlist with ID: ${playlistId}`);
   };
   
-  const handleSubmitReview = (e) => {
-    e.preventDefault();
+  const handleLikeClick = () => {
+    if (!currentUser) {
+      // If no user is logged in, prompt to login
+      if (window.confirm('Please log in to like movies. Go to login page?')) {
+        navigate('/login');
+      }
+      return;
+    }
     
+    // Toggle liked state
+    const newLikedState = !isLiked;
+    setIsLiked(newLikedState);
+    
+    // Add to or remove from default "Liked" playlist
+    addToDefaultPlaylist(movie, 'Liked', newLikedState);
+  };
+
+  const handleWatchedClick = () => {
+    if (!currentUser) {
+      // If no user is logged in, prompt to login
+      if (window.confirm('Please log in to mark movies as watched. Go to login page?')) {
+        navigate('/login');
+      }
+      return;
+    }
+    
+    // Toggle watched state
+    const newWatchedState = !isWatched;
+    setIsWatched(newWatchedState);
+    
+    // Add to or remove from default "Watched" playlist
+    addToDefaultPlaylist(movie, 'Watched', newWatchedState);
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
     if (!currentUser) {
       if (window.confirm('You need to be logged in to post reviews. Go to login page?')) {
         navigate('/login');
       }
       return;
     }
-    
-    if (!newReview.trim()) return;
-    
     const review = {
       movie_id: movieId,
       content: newReview,
       vote: newRating,
       created: new Date().toISOString(),
-      user_id: currentUser.id
-      // user_id: moviesService.getUser().id,
+      user_id: currentUser.id,
     };
     try {
-      // Add to user reviews and supabase
-      const {error} = supabaseService.addReview(movieId, review);
-      if (error) {
-        throw error;
-      }
+      await supabaseService.addReview(movieId, review);
+      // After adding, reload reviews from backend to get correct review_id
+      const { reviews: fetchedUserReviews } = await supabaseService.getMovieReviews(movieId);
+      setUserReviews(fetchedUserReviews || []);
+      setNewReview('');
+      setNewRating(5);
     } catch (err) {
       console.error('Error adding review:', err.message);
       setError('Failed to add review. Please try again.');
       return;
     }
-    const updatedReviews = [...userReviews, review];
-    // sort updated reviews by created date
-    updatedReviews.sort((a, b) => new Date(b.created) - new Date(a.created));
-    setUserReviews(updatedReviews);
-    
-    // Save to localStorage
-    // const savedUserReviews = localStorage.getItem('userReviews');
-    // const parsedReviews = savedUserReviews ? JSON.parse(savedUserReviews) : [];
-    // const newReviews = [...parsedReviews, review];
-    // localStorage.setItem('userReviews', JSON.stringify(newReviews));
-    
-    // Clear form
-    setNewReview('');
-    setNewRating(5);
   };
 
   useEffect(() => {
@@ -168,29 +259,50 @@ const MoviePage = () => {
   // Format the poster URL
   const posterUrl = movie.poster_path 
     ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
-    : 'https://via.placeholder.com/500x750?text=No+Poster';
+    : 'https://dummyimage.com/500x750/000/fff&text=No+Poster';
 
   return (
     <div className="movie-page" style={{ backgroundColor: themeColors.background }}>
-      {backdropUrl && (
-        <div className="backdrop" style={{ backgroundImage: `url(${backdropUrl})` }}>
-          <div className="backdrop-overlay" style={{ backgroundColor: `${themeColors.background}CC` }}></div>
-        </div>
-      )}
-
-      <div className="movie-content">
-        <div className="movie-header">
-          <div className="poster-container">
-            <img src={posterUrl} alt={movie.title} className="movie-poster" />
+      {/* Header with Go Back Button and Action Buttons */}
+      <div className="movie-page-header">
+        <button 
+          onClick={handleGoBack} 
+          className="go-back-btn"
+        >
+          ← Back
+        </button>
+        
+        {movie && (
+          <div className="header-action-buttons">
             <button 
-              className="add-to-playlist-btn" 
-              onClick={handleAddToPlaylist}
-              style={{ backgroundColor: themeColors.primary }}
+              className={`action-btn like-btn ${isLiked ? 'active' : ''}`}
+              onClick={handleLikeClick}
+              aria-label={isLiked ? "Remove from liked" : "Add to liked"}
+              title={isLiked ? "Unlike" : "Like"}
             >
-              Add to Playlist
+              <span className="btn-icon">{isLiked ? '♥' : '♡'}</span>
             </button>
+            
+            <button 
+              className={`action-btn watched-btn ${isWatched ? 'active' : ''}`}
+              onClick={handleWatchedClick}
+              aria-label={isWatched ? "Remove from watched" : "Add to watched"}
+              title={isWatched ? "Unmark as watched" : "Mark as watched"}
+            >
+              <span className="btn-icon">{isWatched ? '✓' : '👁️'}</span>
+            </button>
+            
+            <button 
+              className={`action-btn playlist-btn ${isAdding ? 'active' : ''}`}
+              onClick={handleAddToPlaylist}
+              aria-label="Add to playlist"
+              title="Add to playlist"
+            >
+              <span className="btn-icon">{isAdding ? '✓' : '+'}</span>
+            </button>
+            
             {showAddToPlaylist && (
-              <div className="playlist-dropdown-wrapper">
+              <div className="playlist-dropdown-wrapper header-dropdown">
                 <PlaylistDropdown
                   movie={movie}
                   onPlaylistSelected={handlePlaylistSelected}
@@ -199,16 +311,31 @@ const MoviePage = () => {
               </div>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Move the backdrop here, after the header but before the main content */}
+      {backdropUrl && (
+        <div className="backdrop" style={{ backgroundImage: `url(${backdropUrl})` }}>
+          <div className="backdrop-overlay" style={{ backgroundColor: `${themeColors.background}CC` }}></div>
+        </div>
+      )}
+      
+      {/* Movie Content */}
+      <div className="movie-content">
+        <div className="movie-header">
+          <div className="poster-container">
+            <img src={posterUrl} alt={movie.title} className="movie-poster" />
+          </div>
           
           <div className="movie-info">
             <h1>{movie.title} {movie.release_date && <span>({new Date(movie.release_date).getFullYear()})</span>}</h1>
-            
             <div className="tagline">{movie.tagline}</div>
 
             <div className="movie-meta">
               {movie.runtime && <span>{Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m</span>}
               {movie.genres && movie.genres.map(genre => (
-                <span key={genre} className="genre-tag">{genre}</span>
+                <span key={genre.genre_id} className="genre-tag">{genre}</span>
               ))}
               {movie.vote_avg && (
                 <div className="rating">
@@ -224,17 +351,16 @@ const MoviePage = () => {
                   )}
                 </div>
               )}
-              {/* 
-              )} */}
             </div>
+            
             
             <div className="overview">
               <h3>Overview</h3>
-              <p>{movie.synopsis || 'No overview available'}</p>
+              <p>{movie.synopsis || 'No synopsis available'}</p>
             </div>
             
             <div className="additional-info">
-              <div>
+            <div>
                 <strong>Status:</strong> {movie.status}
               </div>
               {movie.budget > 0 && (
@@ -242,19 +368,20 @@ const MoviePage = () => {
                   <strong>Budget:</strong> ${(movie.budget / 1000000).toFixed(1)} million
                 </div>
               )}
-              {movie.revenue > 0 && (
+              {movie.language.name && (
                 <div>
-                  <strong>Revenue:</strong> ${(movie.revenue / 1000000).toFixed(1)} million
+                  <strong>Language:</strong> {movie.language.name}
                 </div>
               )}
+
               {movie.release_date && (
                 <div>
                   <strong>Release Date:</strong> {new Date(movie.release_date).toLocaleDateString()}
                 </div>
               )}
-              {movie.language.name && (
+              {movie.revenue > 0 && (
                 <div>
-                  <strong>Language:</strong> {movie.language.name}
+                  <strong>Revenue:</strong> ${(movie.revenue / 1000000).toFixed(1)} million
                 </div>
               )}
               {movie.rating && (
@@ -280,9 +407,10 @@ const MoviePage = () => {
                         alt={person.name}
                       />
                     ) : (
-                      <div className="no-photo" style={{ backgroundColor: themeColors.surface }}>
-                        No Photo
-                      </div>
+                      <img
+                        src={`https://dummyimage.com/185x278/000/fff&text=No+Photo`}
+                        alt="No Photo"
+                      />
                     )}
                   </div>
                   <div className="actor-info">
@@ -306,24 +434,13 @@ const MoviePage = () => {
               
               <div className="rating-input">
                 <label>Your Rating:</label>
-                <select 
-                  value={newRating} 
-                  onChange={(e) => setNewRating(Number(e.target.value))}
-                  style={{ backgroundColor: themeColors.surface, color: themeColors.text }}
-                >
-                  {[ 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(num => (
-                    <option key={num} value={num}>
-                      {num} {num === 1 ? 'star' : 'stars'}
-                    </option>
-                  ))}
-                </select>
+                <StarRating rating={newRating} setRating={setNewRating} />
               </div>
               
               <textarea
                 placeholder="Share your thoughts on this movie..."
                 value={newReview}
                 onChange={(e) => setNewReview(e.target.value)}
-                required
                 style={{ backgroundColor: themeColors.surface, color: themeColors.text }}
               ></textarea>
               
@@ -340,49 +457,25 @@ const MoviePage = () => {
           <div className="reviews-list">
             {/* User reviews */}
             {userReviews.length > 0 && (
-              <>
+              <div className="reviews-container">
                 <h3>User Reviews</h3>
                 {userReviews.map(review => (
-                  <div key={review.id} className="review" style={{ backgroundColor: themeColors.surface }}>
+                  <div key={review.review_id} className="review" style={{ backgroundColor: themeColors.surface }}>
                     <div className="review-header">
                       <div className="reviewer">
-                        {/* <strong>{review.user_id}</strong> */}
-                        {<strong>name placeholder</strong>}
+                        <strong>{reviewUsernames[review.user_id] || '...'}</strong>
                         <span className="review-date">
                           {new Date(review.created).toLocaleDateString()}
                         </span>
                       </div>
-                      <div className="review-rating">⭐ {review.vote}/10</div>
+                      <div className="review-rating">{'★'.repeat(review.vote)} <span className="rating-number">{review.vote}/10</span></div>
                     </div>
                     <div className="review-content">{review.content}</div>
                   </div>
                 ))}
-              </>
+              </div>
             )}
-            
-            {/* TMDB reviews */}
-            {/* {reviews.length > 0 && (
-              <>
-                <h3>TMDB Reviews</h3>
-                {reviews.map(review => (
-                  <div key={review.id} className="review" style={{ backgroundColor: themeColors.surface }}>
-                    <div className="review-header">
-                      <div className="reviewer">
-                        <strong>{review.author}</strong>
-                        <span className="review-date">
-                          {new Date(review.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      {review.author_details && review.author_details.rating && (
-                        <div className="review-rating">⭐ {review.author_details.rating}/10</div>
-                      )}
-                    </div>
-                    <div className="review-content">{review.content}</div>
-                  </div>
-                ))}
-              </>
-            )} */}
-            
+          
             {userReviews.length === 0 && (
               <div className="no-reviews">
                 <p>No reviews yet. {!currentUser && 'Log in to be the first to review!'}</p>
@@ -391,8 +484,21 @@ const MoviePage = () => {
           </div>
         </div>
       </div>
+      {/* Floating Chatbot Window */}
+      <div style={{
+        position: "fixed",
+        bottom: 24,
+        right: 24,
+        zIndex: 1000,
+        boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+        borderRadius: 8,
+        background: "#fff"
+      }}>
+        <Chatbot />
+      </div>
     </div>
   );
 };
+
 
 export default MoviePage;

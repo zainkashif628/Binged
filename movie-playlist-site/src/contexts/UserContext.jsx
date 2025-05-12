@@ -1,15 +1,12 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { playlistsService, watchedMoviesService } from '../services/databaseSupabase';
+import { playlistsService, watchedMoviesService, usersService, friendsService } from '../services/databaseSupabase';
 import { supabase } from '../services/supabaseClient';
 
 export const UserContext = createContext();
 
 export const UserProvider = ({ children }) => {
   // --- Auth/session state ---
-  const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
+  const [currentUser, setCurrentUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const mounted = useRef(true);
@@ -17,28 +14,62 @@ export const UserProvider = ({ children }) => {
   const isNavigating = useRef(false);
 
   // --- App state ---
-  const [users, setUsers] = useState(() => {
-    const savedUsers = localStorage.getItem('users');
-    return savedUsers ? JSON.parse(savedUsers) : [];
-  });
-  const [friends, setFriends] = useState(() => {
-    const savedFriends = localStorage.getItem('friends');
-    return savedFriends ? JSON.parse(savedFriends) : [];
-  });
+  const [users, setUsers] = useState([]);
+  const [friends, setFriends] = useState([]);
 
   // --- Cleanup function for user data ---
   const cleanupUserData = useCallback(() => {
     if (!mounted.current) return;
     setCurrentUser(null);
     setSession(null);
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('userProfile');
-    localStorage.removeItem('sessionExpiry');
-    localStorage.removeItem('userPlaylists');
-    localStorage.removeItem('userConnections');
-    localStorage.removeItem('friends');
+    setUsers([]);
+    setFriends([]);
     supabase.removeAllChannels();
   }, []);
+
+  // --- Register new user with Supabase Auth ---
+  const register = async (username, email, password) => {
+    try {
+      // Sign up with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { username }
+        }
+      });
+      if (error) return { success: false, message: error.message };
+      // Insert user profile into user table (if not auto-created)
+      const userId = data.user?.id;
+      if (userId) {
+        await usersService.getUserById(userId); // Will throw if not found
+      }
+      return { success: true, user: data.user };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  // --- Login user with Supabase Auth ---
+  const login = async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      if (error) return { success: false, message: error.message };
+      setSession(data.session);
+      return { success: true, user: data.user };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  // --- Logout user with Supabase Auth ---
+  const logout = async () => {
+    await supabase.auth.signOut();
+    cleanupUserData();
+  };
 
   // --- Auth state change handler ---
   const handleAuthStateChange = useCallback(async (event, session) => {
@@ -51,7 +82,7 @@ export const UserProvider = ({ children }) => {
         if (event === 'SIGNED_OUT') {
           cleanupUserData();
         } else if (event === 'TOKEN_REFRESHED' && session) {
-          localStorage.setItem('sessionExpiry', new Date(session.expires_at).toISOString());
+          // No-op for now
         }
         if (!isNavigating.current) {
           setSession(session);
@@ -92,40 +123,64 @@ export const UserProvider = ({ children }) => {
     };
   }, [handleAuthStateChange]);
 
-  // --- LocalStorage syncs ---
+  // --- Fetch users and friends from Supabase ---
   useEffect(() => {
-    if (!mounted.current) return;
-    if (currentUser) {
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('currentUser');
-    }
-  }, [currentUser]);
-  useEffect(() => {
-    if (!mounted.current) return;
-    localStorage.setItem('users', JSON.stringify(users));
-  }, [users]);
-  useEffect(() => {
-    if (!mounted.current) return;
-    localStorage.setItem('friends', JSON.stringify(friends));
-  }, [friends]);
+    if (!session) return;
+    const fetchData = async () => {
+      try {
+        // Fetch all users
+        const allUsers = await usersService.getAllUsers();
+        // Fetch playlists and watchedMovies for each user
+        const usersWithData = await Promise.all(
+          allUsers.map(async user => {
+            const playlists = await playlistsService.getUserPlaylists(user.id);
+            let watchedMovies = [];
+            try {
+              watchedMovies = await watchedMoviesService.getWatchedMovies(user.id);
+            } catch (e) {
+              watchedMovies = [];
+            }
+            return { ...user, playlists, watchedMovies };
+          })
+        );
+        setUsers(usersWithData);
+        // Fetch all friendships for the current user
+        const allFriends = await friendsService.getAllFriends(session.user.id);
+        setFriends(allFriends);
+        // Fetch current user profile with playlists and watchedMovies
+        const userProfile = usersWithData.find(u => u.id === session.user.id);
+        setCurrentUser(userProfile);
+      } catch (err) {
+        console.error('Error fetching users/friends:', err);
+      }
+    };
+    fetchData();
+  }, [session]);
 
-  // --- Social/friends logic ---
-  const getActiveFriends = useCallback(() => {
+  // Get active friends (accepted status)
+  const getActiveFriends = () => {
     if (!currentUser) return [];
-    return friends.filter(friend => 
-      friend.status === 'accepted' && 
-      (friend.user_id === currentUser.id || friend.friend_id === currentUser.id)
-    ).map(friend => {
-      const friendId = friend.user_id === currentUser.id ? friend.friend_id : friend.user_id;
-      const friendUser = users.find(u => u.id === friendId);
-      return {
-        ...friend,
-        user: friendUser,
-        compatibility: calculateCompatibility(friendUser)
-      };
-    });
-  }, [currentUser, friends, users]);
+    
+    return friends
+      .filter(f => 
+        f.status === 'accepted' && 
+        (f.user1Id === currentUser.id || f.user2Id === currentUser.id)
+      )
+      .map(f => {
+        const friendId = f.user1Id === currentUser.id ? f.user2Id : f.user1Id;
+        const friendUser = users.find(u => u.id === friendId);
+        
+        if (friendUser) {
+          return {
+            ...friendUser,
+            compatibility: calculateBlendCompatibility(friendUser.id)
+          };
+        }
+        
+        return null;
+      })
+      .filter(Boolean);
+  };
 
   const getFriendRequests = useCallback(() => {
     if (!currentUser) return [];
@@ -144,22 +199,8 @@ export const UserProvider = ({ children }) => {
   const addFriend = useCallback(async (userId) => {
     if (!currentUser) return { success: false, message: 'Not logged in' };
     try {
-      const { data, error } = await supabase
-        .from('user_connections')
-        .insert([
-          {
-            user_id: currentUser.id,
-            friend_id: userId,
-            status: 'pending'
-          }
-        ]);
-      if (error) throw error;
-      const newFriend = {
-        id: data[0].id,
-        user_id: currentUser.id,
-        friend_id: userId,
-        status: 'pending'
-      };
+      // Use new friendsService.addFriend (composite key logic handled in service)
+      const newFriend = await friendsService.addFriend(currentUser.id, userId);
       setFriends(prev => [...prev, newFriend]);
       return { success: true, data: newFriend };
     } catch (error) {
@@ -168,72 +209,120 @@ export const UserProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  const acceptFriendRequest = useCallback(async (friendshipId) => {
+  // Accept friend request: pass both user IDs
+  const acceptFriendRequest = useCallback(async (friendUserId) => {
     if (!currentUser) return { success: false, message: 'Not logged in' };
     try {
-      const { data, error } = await supabase
-        .from('user_connections')
-        .update({ status: 'accepted' })
-        .eq('id', friendshipId)
-        .eq('friend_id', currentUser.id);
-      if (error) throw error;
+      // Use new friendsService.acceptFriendRequest (composite key logic handled in service)
+      const updated = await friendsService.acceptFriendRequest(currentUser.id, friendUserId);
       setFriends(prev => 
-        prev.map(friend => 
-          friend.id === friendshipId 
-            ? { ...friend, status: 'accepted' }
-            : friend
-        )
+        prev.map(friend => {
+          // Update the correct friendship row (composite key match)
+          const least_id = currentUser.id < friendUserId ? currentUser.id : friendUserId;
+          const greatest_id = currentUser.id > friendUserId ? currentUser.id : friendUserId;
+          const friend_least_id = friend.least_id || (friend.user_id < friend.friend_id ? friend.user_id : friend.friend_id);
+          const friend_greatest_id = friend.greatest_id || (friend.user_id > friend.friend_id ? friend.user_id : friend.friend_id);
+          if (friend_least_id === least_id && friend_greatest_id === greatest_id) {
+            return { ...friend, status: 'accepted' };
+          }
+          return friend;
+        })
       );
-      return { success: true, data };
+      return { success: true, data: updated };
     } catch (error) {
       console.error('Error accepting friend request:', error);
       return { success: false, message: error.message };
     }
   }, [currentUser]);
 
-  // Helper function to calculate compatibility between users
-  const calculateCompatibility = useCallback((friendUser) => {
-    if (!currentUser || !friendUser) return 0;
-    const currentUserPrefs = currentUser.favoriteGenres || [];
-    const friendUserPrefs = friendUser.favoriteGenres || [];
-    const commonGenres = currentUserPrefs.filter(genre => 
-      friendUserPrefs.includes(genre)
-    );
-    const totalGenres = new Set([...currentUserPrefs, ...friendUserPrefs]).size;
-    const compatibilityScore = totalGenres > 0 
-      ? Math.round((commonGenres.length / totalGenres) * 100)
+  const calculateBlendCompatibility = (userId) => {
+    if (!currentUser) return 0;
+    
+    const otherUser = users.find(user => user.id === userId);
+    if (!otherUser) return 0;
+    
+    // Compare liked movies - safely handle missing arrays with default empty arrays
+    const myLiked = new Set((currentUser.likedMovies || []).map(m => m.id));
+    const theirLiked = new Set((otherUser.likedMovies || []).map(m => m.id));
+    
+    // Get movie IDs from playlists
+    const myPlaylistMovies = new Set();
+    const theirPlaylistMovies = new Set();
+    
+    // Extract movie IDs from current user's playlists
+    if (currentUser.playlists && currentUser.playlists.length > 0) {
+      currentUser.playlists.forEach(playlist => {
+        if (playlist.movies && playlist.movies.length > 0) {
+          playlist.movies.forEach(movie => {
+            if (movie && movie.id) {
+              myPlaylistMovies.add(movie.id);
+            }
+          });
+        }
+      });
+    }
+
+    // Extract movie IDs from other user's playlists
+    if (otherUser.playlists && otherUser.playlists.length > 0) {
+      otherUser.playlists.forEach(playlist => {
+        if (playlist.movies && playlist.movies.length > 0) {
+          playlist.movies.forEach(movie => {
+            if (movie && movie.id) {
+              theirPlaylistMovies.add(movie.id);
+            }
+          });
+        }
+      });
+    }
+
+    // Combine liked movies with playlist movies
+    const allMyMovies = new Set([...myLiked, ...myPlaylistMovies]);
+    const allTheirMovies = new Set([...theirLiked, ...theirPlaylistMovies]);
+    
+    // Intersection of all movies (common movies)
+    const commonMovies = [...allMyMovies].filter(id => allTheirMovies.has(id));
+    
+    // Calculate compatibility percentage
+    const totalUniqueMovies = new Set([...allMyMovies, ...allTheirMovies]);
+    
+    const movieOverlapScore = totalUniqueMovies.size > 0 
+      ? Math.round((commonMovies.length / totalUniqueMovies.size) * 100)
       : 0;
-    return compatibilityScore;
-  }, [currentUser]);
+    
+    // Calculate genre match percentage (50% movie overlap, 50% genre match)
+    const genreMatchScore = calculateGenreMatchPercentage(currentUser.id, userId);
+    
+    // Weighted average of both scores
+    return Math.round((movieOverlapScore * 0.5) + (genreMatchScore * 0.5));
+  };
+
 
   // --- Playlist/like logic (Supabase-powered) ---
   const addToDefaultPlaylist = async (movie, playlistName, add = true) => {
     if (!currentUser) return { success: false, message: 'Not logged in' };
     try {
       let playlists = await playlistsService.getUserPlaylists(currentUser.id);
-      let likedPlaylist = playlists.find(p => p.name === playlistName);
-      if (!likedPlaylist) {
-        likedPlaylist = await playlistsService.createPlaylist({
+      let defaultPlaylist = playlists.find(p => p.name === playlistName);
+      if (!defaultPlaylist) {
+        defaultPlaylist = await playlistsService.createPlaylist({
           name: playlistName,
           status: 'private',
           user_id: currentUser.id
         });
         playlists = await playlistsService.getUserPlaylists(currentUser.id);
-        likedPlaylist = playlists.find(p => p.name === playlistName);
+        defaultPlaylist = playlists.find(p => p.name === playlistName);
       }
       if (add) {
-        await playlistsService.addMovieToPlaylist(likedPlaylist.id, movie.movie_id || movie.id);
+        await playlistsService.addMovieToPlaylist(defaultPlaylist.id, movie.movie_id || movie.id);
       } else {
-        await playlistsService.removeMovieFromPlaylist(likedPlaylist.id, movie.movie_id || movie.id);
+        await playlistsService.removeMovieFromPlaylist(defaultPlaylist.id, movie.movie_id || movie.id);
       }
-      // Refresh playlists and watchedMovies
+      // Refresh playlists
       const updatedPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
-      const updatedWatched = await watchedMoviesService.getWatchedMovies(currentUser.id);
-      const watchedPlaylist = await watchedMoviesService.getWatchedPlaylist(currentUser.id);
-      setCurrentUser({ ...currentUser, playlists: updatedPlaylists, watchedMovies: updatedWatched, watchedPlaylist });
+      setCurrentUser({ ...currentUser, playlists: updatedPlaylists });
       return { success: true };
     } catch (err) {
-      console.error('Error updating Liked playlist:', err);
+      console.error('Error updating playlist:', err);
       return { success: false, message: err.message };
     }
   };
@@ -250,8 +339,7 @@ export const UserProvider = ({ children }) => {
       // Refresh watchedMovies and playlists
       const watched = await watchedMoviesService.getWatchedMovies(currentUser.id);
       const updatedPlaylists = await playlistsService.getUserPlaylists(currentUser.id);
-      const watchedPlaylist = await watchedMoviesService.getWatchedPlaylist(currentUser.id);
-      setCurrentUser({ ...currentUser, watchedMovies: watched, playlists: updatedPlaylists, watchedPlaylist });
+      setCurrentUser({ ...currentUser, watchedMovies: watched, playlists: updatedPlaylists });
       return { success: true };
     } catch (err) {
       console.error('Error updating Watched:', err);
@@ -259,65 +347,421 @@ export const UserProvider = ({ children }) => {
     }
   };
 
-  // On login, fetch watchedPlaylist as well
-  useEffect(() => {
-    if (currentUser && currentUser.id) {
-      (async () => {
-        try {
-          const watchedPlaylist = await watchedMoviesService.getWatchedPlaylist(currentUser.id);
-          setCurrentUser(prev => ({ ...prev, watchedPlaylist }));
-        } catch (err) {
-          // ignore
-        }
-      })();
-    }
-  }, [currentUser && currentUser.id]);
-
-  // --- Logout function (Supabase sign out + cleanup) ---
-  const logout = useCallback(async () => {
+  // --- Update user profile in Supabase ---
+  const updateProfile = async (updates) => {
+    if (!currentUser) return { success: false, message: 'Not logged in' };
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      cleanupUserData();
-      return { success: true };
-    } catch (error) {
-      console.error('Error signing out:', error);
-      cleanupUserData();
-      return { success: false, error: error.message };
+      // Only update allowed fields
+      const allowed = ['username', 'bio', 'favoriteGenres'];
+      const updateObj = {};
+      allowed.forEach(key => {
+        if (updates[key] !== undefined) updateObj[key] = updates[key];
+      });
+      // Update user table
+      const { data, error } = await supabase
+        .from('user')
+        .update(updateObj)
+        .eq('id', currentUser.id)
+        .select()
+        .single();
+      if (error) return { success: false, message: error.message };
+      // Optionally update password
+      if (updates.password) {
+        const { error: pwError } = await supabase.auth.updateUser({ password: updates.password });
+        if (pwError) return { success: false, message: pwError.message };
+      }
+      // Refresh user data
+      const updatedUser = await usersService.getUserById(currentUser.id);
+      setCurrentUser({ ...currentUser, ...updatedUser });
+      return { success: true, user: updatedUser };
+    } catch (err) {
+      return { success: false, message: err.message };
     }
-  }, [cleanupUserData]);
+  };
 
-  // --- Context value ---
-  const value = {
-    currentUser,
-    session,
-    loading,
-    users,
-    friends,
-    setCurrentUser,
-    logout,
-    getActiveFriends,
-    getFriendRequests,
-    addFriend,
-    acceptFriendRequest,
-    isNavigating,
-    addToDefaultPlaylist,
-    addToWatched
+  // Helper: get all movies for a user (from playlists and watched)
+  const getAllUserMovies = (user) => {
+    const movieSet = new Set();
+    if (user?.playlists) {
+      user.playlists.forEach(playlist => {
+        if (playlist.movies) {
+          playlist.movies.forEach(movie => movieSet.add(movie.id));
+        }
+      });
+    }
+    if (user?.watchedMovies) {
+      user.watchedMovies.forEach(movie => movieSet.add(movie.id));
+    }
+    return Array.from(movieSet);
+  };
+
+  const calculateUserTasteProfile = (userId = null) => {
+    const user = userId ? users.find(u => u.id === userId) : currentUser;
+    if (!user || !user.playlists) return {};
+    
+    // Initialize counters for each genre
+    const genreCounts = {};
+    let totalGenreInstances = 0;
+    
+    // Function to process a movie and count its genres
+    const processMovie = (movie) => {
+      if (!movie.genre_ids && !movie.genres) return;
+      
+      // Handle both genre_ids array and genres object array
+      const genres = movie.genre_ids || (movie.genres ? movie.genres.map(g => g.id) : []);
+      
+      genres.forEach(genreId => {
+        const genreName = getGenreName(genreId);
+        if (genreName) {
+          genreCounts[genreName] = (genreCounts[genreName] || 0) + 1;
+          totalGenreInstances++;
+        }
+      });
+    };
+    
+    // Process watched and liked playlists with higher weight
+    user.playlists.forEach(playlist => {
+      if (!playlist.movies) return;
+      
+      const isWatched = playlist.name === 'Watched';
+      const isLiked = playlist.name === 'Liked';
+      
+      playlist.movies.forEach(movie => {
+        // Process regular playlist movies
+        processMovie(movie);
+        
+        // Give extra weight to watched and liked movies
+        if (isWatched || isLiked) {
+          processMovie(movie); // Process again for extra weight
+        }
+        
+        // Give even more weight to movies that are both watched and liked
+        if (isWatched && user.playlists.some(p => 
+          p.name === 'Liked' && p.movies && p.movies.some(m => m.id === movie.id))
+        ) {
+          processMovie(movie); // Process a third time for extra-extra weight
+        }
+      });
+    });
+    
+    // Calculate percentages
+    const profile = {};
+    if (totalGenreInstances > 0) {
+      Object.keys(genreCounts).forEach(genre => {
+        profile[genre] = Math.round((genreCounts[genre] / totalGenreInstances) * 100);
+      });
+    }
+    
+    return profile;
+  };
+
+
+  const calculateGenreMatchPercentage = (userId) => {
+    if (!currentUser) return 0;
+    
+    const myProfile = calculateUserTasteProfile();
+    const otherProfile = calculateUserTasteProfile(userId);
+    
+    // Find all unique genres between both users
+    const allGenres = new Set([
+      ...Object.keys(myProfile),
+      ...Object.keys(otherProfile)
+    ]);
+    
+    if (allGenres.size === 0) return 0;
+    
+    let totalOverlap = 0;
+    let totalPossible = 0;
+    
+    allGenres.forEach(genre => {
+      const myValue = myProfile[genre] || 0;
+      const otherValue = otherProfile[genre] || 0;
+      
+      // Add the minimum (the overlap) to the total
+      totalOverlap += Math.min(myValue, otherValue);
+      
+      // Add the maximum (the possible) to the total
+      totalPossible += Math.max(myValue, otherValue);
+    });
+    
+    // Calculate percentage based on overlap
+    return totalPossible > 0 ? Math.round((totalOverlap / totalPossible) * 100) : 0;
+  };
+  
+  // Get movie recommendations based on shared tastes with a friend
+  const getSharedTasteRecommendations = (friendId) => {
+    if (!currentUser) return [];
+    
+    const friend = users.find(user => user.id === friendId);
+    if (!friend || !friend.playlists) return [];
+    
+    const myProfile = calculateUserTasteProfile();
+    const friendProfile = calculateUserTasteProfile(friendId);
+    
+    // Find common strong genres (both users have at least 10% interest)
+    const commonGenres = Object.keys(myProfile).filter(genre => 
+      myProfile[genre] >= 10 && friendProfile[genre] >= 10
+    );
+    
+    // Get genre IDs from names
+    const commonGenreIds = commonGenres.map(getGenreId).filter(Boolean);
+    
+    // If no common genres, use friend's top genres
+    const fallbackGenreIds = [];
+    if (commonGenreIds.length === 0) {
+      const topFriendGenres = Object.entries(friendProfile)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+        .map(([genre]) => getGenreId(genre))
+        .filter(Boolean);
+      
+      fallbackGenreIds.push(...topFriendGenres);
+    }
+    
+    // Use either common genres or fallback to friend's top genres
+    const genresToUse = commonGenreIds.length > 0 ? commonGenreIds : fallbackGenreIds;
+    
+    // Get all movies from friend's playlists that I haven't watched
+    const myWatchedIds = new Set();
+    const recommendations = [];
+    
+    // Get all my watched movie IDs
+    if (currentUser.playlists) {
+      currentUser.playlists.forEach(playlist => {
+        if (playlist.movies) {
+          playlist.movies.forEach(movie => {
+            myWatchedIds.add(movie.id);
+          });
+        }
+      });
+    }
+    
+    // Find movies from friend's playlists that match target genres
+    if (friend.playlists) {
+      friend.playlists.forEach(playlist => {
+        if (playlist.movies) {
+          playlist.movies.forEach(movie => {
+            // Skip if I've already watched this movie
+            if (myWatchedIds.has(movie.id)) return;
+            
+            // Check if movie has any of our target genres
+            const movieGenreIds = movie.genre_ids || 
+              (movie.genres ? movie.genres.map(g => g.id) : []);
+            
+            const hasTargetGenre = movieGenreIds.some(genreId => 
+              genresToUse.includes(genreId)
+            );
+            
+            if (hasTargetGenre || genresToUse.length === 0) {
+              // Add to recommendations if not already added
+              if (!recommendations.some(rec => rec.id === movie.id)) {
+                recommendations.push(movie);
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    // If we still don't have recommendations, include some of friend's highest rated movies
+    if (recommendations.length === 0 && friend.playlists) {
+      const allFriendMovies = [];
+      
+      friend.playlists.forEach(playlist => {
+        if (playlist.movies) {
+          playlist.movies.forEach(movie => {
+            if (!myWatchedIds.has(movie.id)) {
+              allFriendMovies.push(movie);
+            }
+          });
+        }
+      });
+      
+      // Get top rated movies from friend
+      const topRatedMovies = allFriendMovies
+        .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0))
+        .slice(0, 6);
+        
+      recommendations.push(...topRatedMovies);
+    }
+    
+    // Sort by vote average (highest rated first)
+    return recommendations
+      .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0))
+      .slice(0, 6); // Limit to 6 recommendations
+  };
+  
+  // Get personalized movie recommendations based on user's taste profile
+  const getPersonalizedRecommendations = () => {
+    if (!currentUser) return [];
+    
+    // Get the user's taste profile
+    const tasteProfile = calculateUserTasteProfile();
+    
+    // Get the top 3 genres from the user's profile
+    const topGenres = Object.entries(tasteProfile)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .map(([genre]) => genre);
+    
+    // Convert genre names to IDs
+    const topGenreIds = topGenres.map(getGenreId).filter(Boolean);
+    
+    // Create a set of already watched movies to avoid recommending them
+    const watchedMovieIds = new Set();
+    
+    if (currentUser.playlists) {
+      currentUser.playlists.forEach(playlist => {
+        if (playlist.movies) {
+          playlist.movies.forEach(movie => {
+            watchedMovieIds.add(movie.id);
+          });
+        }
+      });
+    }
+    
+    // Collect potential recommendations from other users' playlists
+    const allRecommendations = [];
+    
+    users.forEach(user => {
+      if (user.id === currentUser.id) return; // Skip current user
+      
+      if (user.playlists) {
+        user.playlists.forEach(playlist => {
+          if (playlist.movies) {
+            playlist.movies.forEach(movie => {
+              // Skip if already watched
+              if (watchedMovieIds.has(movie.id)) return;
+              
+              // Check if the movie matches any of the top genres
+              const movieGenreIds = movie.genre_ids || 
+                (movie.genres ? movie.genres.map(g => g.id) : []);
+              
+              const matchesTopGenre = movieGenreIds.some(genreId => 
+                topGenreIds.includes(genreId)
+              );
+              
+              if (matchesTopGenre) {
+                // Add to recommendations if not already in the list
+                if (!allRecommendations.some(rec => rec.id === movie.id)) {
+                  allRecommendations.push({
+                    ...movie,
+                    recommendationScore: calculateRecommendationScore(movie, tasteProfile)
+                  });
+                }
+              }
+            });
+          }
+        });
+      }
+    });
+    
+    // Sort by recommendation score and return the top 8
+    return allRecommendations
+      .sort((a, b) => b.recommendationScore - a.recommendationScore)
+      .slice(0, 8);
+  };
+  
+  // Calculate a recommendation score based on genre match and rating
+  const calculateRecommendationScore = (movie, tasteProfile) => {
+    let score = movie.vote_average || 5; // Base score from movie rating
+    
+    // Get movie genres
+    const movieGenres = movie.genres ? 
+      movie.genres.map(g => g.name) : 
+      (movie.genre_ids || []).map(id => getGenreName(id)).filter(Boolean);
+    
+    // Boost score based on genre match percentage
+    movieGenres.forEach(genre => {
+      if (tasteProfile[genre]) {
+        // Add a percentage of the user's interest in this genre
+        score += (tasteProfile[genre] / 100) * 3; // Up to 3 points boost per genre
+      }
+    });
+    
+    return score;
+  };
+
+  // Helper function to convert genre ID to name
+  const getGenreName = (genreId) => {
+    const genreMap = {
+      28: 'Action',
+      12: 'Adventure',
+      16: 'Animation',
+      35: 'Comedy',
+      80: 'Crime',
+      99: 'Documentary',
+      18: 'Drama',
+      10751: 'Family',
+      14: 'Fantasy',
+      36: 'History',
+      27: 'Horror',
+      10402: 'Music',
+      9648: 'Mystery',
+      10749: 'Romance',
+      878: 'Science Fiction',
+      53: 'Thriller',
+      10752: 'War',
+      37: 'Western'
+    };
+    
+    return genreMap[genreId];
+  };
+  
+  // Helper function to convert genre name to ID
+  const getGenreId = (genreName) => {
+    const genreMap = {
+      'Action': 28,
+      'Adventure': 12,
+      'Animation': 16,
+      'Comedy': 35,
+      'Crime': 80,
+      'Documentary': 99,
+      'Drama': 18,
+      'Family': 10751,
+      'Fantasy': 14,
+      'History': 36,
+      'Horror': 27,
+      'Music': 10402,
+      'Mystery': 9648,
+      'Romance': 10749,
+      'Science Fiction': 878,
+      'Thriller': 53,
+      'War': 10752,
+      'Western': 37
+    };
+    
+    return genreMap[genreName];
   };
 
   return (
-    <UserContext.Provider value={value}>
-      {!loading && children}
+    <UserContext.Provider
+      value={{
+        currentUser,
+        users,
+        friends,
+        register,
+        login,
+        logout,
+        addFriend,
+        acceptFriendRequest,
+        getActiveFriends,
+        getFriendRequests,
+        calculateBlendCompatibility,
+        updateProfile,
+        addToDefaultPlaylist,
+        calculateUserTasteProfile,
+        calculateGenreMatchPercentage,
+        getSharedTasteRecommendations,
+        getPersonalizedRecommendations
+      }}
+    >
+      {children}
     </UserContext.Provider>
   );
 };
 
-export const useUser = () => {
-  const context = useContext(UserContext);
-  if (context === undefined) {
-    throw new Error('useUser must be used within a UserProvider');
-  }
-  return context;
-};
+// Custom hook for using the auth context
+export const useUser = () => useContext(UserContext);
 
 export default UserProvider;

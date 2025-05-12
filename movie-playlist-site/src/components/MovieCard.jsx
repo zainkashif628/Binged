@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useUser } from "../contexts/UserContext";
 import { useTheme } from "../contexts/ThemeContext";
 import PlaylistDropdown from "./PlaylistDropdown";
+import { playlistsService } from '../services/databaseSupabase';
 import "./MovieCard.css";
 
 const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
@@ -51,22 +52,12 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
   };
 
   const handleAddToPlaylistClick = (e) => {
-    e.stopPropagation(); // Prevent triggering navigation
-    
+    e.stopPropagation();
     if (!currentUser) {
-      // If no user is logged in, use the provided onAddToPlaylist function
-      if (onAddToPlaylist) {
-        setIsAdding(true);
-        // Show checkmark for 1.5 seconds
-        setTimeout(() => {
-          setIsAdding(false);
-        }, 1500);
-        onAddToPlaylist(movie);
-      }
-    } else {
-      // For logged in users, show the playlist dropdown
-      setShowDropdown(prev => !prev);
+      alert("Please log in to add movies to playlists");
+      return;
     }
+    setShowDropdown(prev => !prev);
   };
 
   const handleLikeClick = async (e) => {
@@ -94,11 +85,9 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
   const handlePlaylistSelected = (playlistId) => {
     setShowDropdown(false);
     setIsAdding(true);
-    // Show checkmark for 1.5 seconds
     setTimeout(() => {
       setIsAdding(false);
-    }, 1500);
-    console.log(`Movie ${movie.title} added to playlist with ID: ${playlistId}`);
+    }, 2000);
   };
 
   // Create a truncated synopsis if it's too long
@@ -128,12 +117,12 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
           alt={movie.title}
           loading="lazy"
         />
-        {movie.vote_average && (
+        {movie.vote_avg && (
           <div className="rating" style={{ 
             backgroundColor: `${themeColors.surface}CC`,
             color: themeColors.primary 
           }}>
-            <span>⭐ {movie.vote_average.toFixed(1)}</span>
+            <span>⭐ {movie.vote_avg.toFixed(1)}</span>
           </div>
         )}
         
@@ -153,7 +142,7 @@ const MovieCard = ({ movie, showAddToPlaylist = true, onAddToPlaylist }) => {
               aria-label={isWatched ? "Unmark as watched" : "Mark as watched"}
               title="Mark as watched"
             >
-              <span className="eye-icon">{isWatched ? '👁️' : '👁'}</span>
+              <span className="eye-icon">{isWatched ? '✓' : '👁️'}</span>
             </button>
             <button 
               className={`add-btn ${isAdding ? 'active' : ''}`}

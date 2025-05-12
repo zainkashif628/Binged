@@ -6,6 +6,7 @@ import { playlistsService, watchedMoviesService } from '../services/databaseSupa
 import PlaylistCreator from '../components/PlaylistCreator';
 import PlaylistsList from '../components/PlaylistsList';
 import PlaylistDetail from '../components/PlaylistDetail';
+import Chatbot from '../components/Chatbot';
 import AuthPrompt from '../components/AuthPrompt';
 import './Playlists.css';
 
@@ -58,12 +59,10 @@ const Playlists = React.memo(() => {
     // Debounce the save operation to prevent rapid successive updates
     const handler = setTimeout(() => {
       try {
-        // Always save playlists, even if empty array
-        localStorage.setItem('playlists', JSON.stringify(playlistsToSave));
-        
         // If user is logged in, update their profile with the playlists
         if (currentUser) {
           // Assuming updateProfile is called elsewhere in the code
+
         }
       } catch (err) {
         console.error("Error saving playlists:", err);
@@ -198,6 +197,7 @@ const Playlists = React.memo(() => {
         }
       }
       
+
       // Update local state
       setPlaylists(currentPlaylists => 
         currentPlaylists.map(playlist => 
@@ -304,6 +304,17 @@ const Playlists = React.memo(() => {
           )}
         </>
       )}
+      <div style={{
+        position: "fixed",
+        bottom: 24,
+        right: 24,
+        zIndex: 1000,
+        boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+        borderRadius: 8,
+        background: "#fff"
+      }}>
+        <Chatbot />
+      </div>
     </div>
   );
 });

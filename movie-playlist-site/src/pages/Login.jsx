@@ -13,7 +13,6 @@ const Login = () => {
   const location = useLocation();
   const { setCurrentUser } = useUser();
   const hasNavigated = useRef(false);
-
   // Store subscription references in component state
   const [subscriptions, setSubscriptions] = useState({
     playlists: null,
@@ -22,50 +21,41 @@ const Login = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-
     if (hasNavigated.current) return;
-
     if (!email || !password) {
       setError('Please fill in all fields');
       return;
     }
-
     setError('');
     setIsLoading(true);
-
     try {
       // 1. Sign in with Supabase Auth
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
-
       if (signInError || !authData.session) {
         throw new Error("Invalid email or password.");
       }
-
       // 2. Fetch user profile from custom user table
       const { data: userData, error: userError } = await supabase
         .from('user')
         .select('id, username, full_name, email')
         .eq('email', email)
         .limit(1);
-
       if (userError || !userData) {
         throw new Error("User profile not found.");
       }
-
       const user = userData[0];
-
-      // 3. Store user profile and set current user
+      // 3. Store user profile and set current user in context only
       const userProfile = {
         id: user.id,
         username: user.username,
         fullName: user.full_name,
         email: user.email
       };
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
       setCurrentUser(userProfile);
+
 
       // 4. Fetch playlists
       const { data: playlists, error: playlistsError } = await supabase
@@ -156,7 +146,6 @@ const Login = () => {
         const from = params.get('from');
         navigate(from || '/profile', { replace: true });
       }
-
     } catch (err) {
       console.error('Login error:', err);
       setError(err.message || 'An error occurred. Please try again.');

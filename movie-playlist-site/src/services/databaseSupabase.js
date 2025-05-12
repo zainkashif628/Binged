@@ -1,6 +1,70 @@
 import { supabase } from './supabaseClient';
 import { fetchMovieBackdrop } from './tmdbService';
 
+// --- USERS SERVICE ---
+export const usersService = {
+  async getAllUsers() {
+    const { data, error } = await supabase.from('user').select('*');
+    if (error) throw error;
+    console.log("data", data);
+    return data;
+  },
+  async getUserById(userId) {
+    const { data, error } = await supabase.from('user').select('*').eq('id', userId).single();
+    if (error) throw error;
+    return data;
+  },
+
+  async getUsernameById(userId) {
+    const { data, error } = await supabase.from('user').select('username').eq('id', userId).single();
+    if (error) throw error;
+    return data.username;
+  }
+};
+
+// --- FRIENDS SERVICE ---
+export const friendsService = {
+  // Get all friendships for a user (where user is either user_id or friend_id)
+  async getAllFriends(userId) {
+    const { data, error } = await supabase
+      .from('friendship')
+      .select('*')
+      .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+    if (error) throw error;
+    return data;
+  },
+
+  // Add a friend (request): always insert with user_id < friend_id for composite key
+  async addFriend(userId, friendId) {
+    const { data, error } = await supabase
+      .from('friendship')
+      .insert([{
+        user_id: userId,
+        friend_id: friendId,
+        status: 'pending'
+      }])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  // Accept a friend request (update status to 'accepted')
+  async acceptFriendRequest(userId, friendId) {
+    const least_id = userId < friendId ? userId : friendId;
+    const greatest_id = userId > friendId ? userId : friendId;
+    const { data, error } = await supabase
+      .from('friendship')
+      .update({ status: 'accepted' })
+      .eq('least_id', least_id)
+      .eq('greatest_id', greatest_id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+};
+
 // Movies CRUD operations
 export const moviesService = {
   // Create a new movie
@@ -367,6 +431,16 @@ export const moviesService = {
     if (error) throw error;
     return data;
   },
+
+  async getUserWatchedMovies(userId) {
+    const { data, error } = await supabase
+      .from('watched_movies')
+      .select('movie:movie_id(*)')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return data;
+  },
   
   // Update a movie
   async updateMovie(id, updates) {
@@ -513,6 +587,17 @@ export const playlistsService = {
 
   // Delete a playlist
   async deletePlaylist(playlistId) {
+    // first check if liked playlist
+    const { data: likedPlaylist, error: likedPlaylistError } = await supabase
+      .from('playlists')
+      .select('*')
+      .eq('playlist_id', playlistId)
+      .single();
+    if (likedPlaylistError) throw likedPlaylistError;
+    if (likedPlaylist.name === 'Liked') {
+      throw new Error('Cannot delete liked playlist');
+    }
+
     // First delete all movie associations
     const { error: movieError } = await supabase
       .from('movie_playlists')
@@ -630,4 +715,113 @@ export const watchedMoviesService = {
     // Return array of movie objects
     return data.map(entry => entry.movie);
   }
+};
+
+// Get the user's most watched genre (highest count in user_genre_prefs)
+export async function getUserMostWatchedGenre(userId) {
+  const { data, error } = await supabase
+    .from('user_genre_prefs')
+    .select('genre_id, watch_count')
+    .eq('user_id', userId)
+    .order('watch_count', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  console.log("wtf: ", data);
+  return data && data.length > 0 ? data[0].genre_id : null;
+}
+
+export async function getUserMostWatchedActor(userId) {
+  const { data, error } = await supabase
+    .from('user_actor_prefs')
+    .select('actor_id, watch_count')
+    .eq('user_id', userId)
+    .order('watch_count', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return data && data.length > 0 ? data[0].actor_id : null;
+}
+
+// Get recommended movies for user: movies in most watched genre or with most watched actor, excluding already watched, sorted by popularity
+export async function getRecommendedMoviesForUser(userId, genreId, actorId, limit = 5) {
+  // 1. Get watched movie IDs
+  const { data: watchedData, error: watchedError } = await supabase
+    .from('watched_movies')
+    .select('movie_id')
+    .eq('user_id', userId);
+  if (watchedError) throw watchedError;
+  const watchedIds = watchedData.map(w => w.movie_id);
+
+  // 2. Get movies by genre
+  let genreMovies = [];
+  if (genreId) {
+    let query = supabase
+      .from('movie_genre')
+      .select('movie:movie_id(*)')
+      .eq('genre_id', genreId);
+    if (watchedIds.length > 0) {
+      query = query.not('movie_id', 'in', `(${watchedIds.join(',')})`);
+    }
+    const { data: genreData, error: genreError } = await query;
+    if (genreError) throw genreError;
+    genreMovies = genreData.map(d => d.movie).filter(Boolean);
+  }
+
+  // 3. Get movies by actor
+  let actorMovies = [];
+  if (actorId) {
+    let query = supabase
+      .from('movie_actor')
+      .select('movie:movie_id(*)')
+      .eq('actor_id', actorId);
+    if (watchedIds.length > 0) {
+      query = query.not('movie_id', 'in', `(${watchedIds.join(',')})`);
+    }
+    const { data: actorData, error: actorError } = await query;
+    if (actorError) throw actorError;
+    actorMovies = actorData.map(d => d.movie).filter(Boolean);
+  }
+
+  // 4. Combine, deduplicate, and sort by popularity
+  const allMovies = [...genreMovies, ...actorMovies];
+  const seen = new Set();
+  const unique = [];
+  for (const m of allMovies) {
+    if (m && !seen.has(m.movie_id)) {
+      unique.push(m);
+      seen.add(m.movie_id);
+    }
+  }
+  // Sort by popularity descending
+  unique.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  return unique.slice(0, limit);
+}
+
+export async function getGenre(genreId) {
+  if (!genreId) return null;
+  const { data, error } = await supabase
+    .from('genre')
+    .select('*')
+    .eq('genre_id', genreId)
+    .single();
+  if (error) throw error;
+  return data.name;
+}
+
+export async function getActor(actorId) {
+  if (!actorId) return null;
+  const { data, error } = await supabase
+    .from('crew_member')
+    .select('*')
+    .eq('member_id', actorId)
+    .single();
+  if (error) throw error;
+  return data.name;
+}
+
+export const customUserMovieService = {
+  getGenre,
+  getActor,
+  getUserMostWatchedGenre,
+  getUserMostWatchedActor,
+  getRecommendedMoviesForUser,
 };

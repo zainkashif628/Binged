@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { genresService, moviesService } from "../services/databaseSupabase";
 import MovieCard from "../components/MovieCard";
 import { useTheme } from "../contexts/ThemeContext";
+import Chatbot from '../components/Chatbot';
+
 import "./Discover.css";
 
 const Discover = () => {
@@ -250,7 +252,20 @@ const Discover = () => {
           )}
         </div>
       </div>
+        {/* Floating Chatbot Window */}
+        <div style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          zIndex: 1000,
+          boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+          borderRadius: 8,
+          background: "#fff"
+        }}>
+        <Chatbot />
+      </div>
     </div>
+    
   );
 };
 
