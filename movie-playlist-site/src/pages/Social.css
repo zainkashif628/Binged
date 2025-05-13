@@ -687,6 +687,18 @@
   background-color: rgba(255, 255, 255, 0.1);
 }
 
+.button-secondary {
+  background-color: rgb(142, 0, 0);
+  color: white;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius);
+  cursor: pointer;
+  
+}
+
 @media (max-width: 768px) {
   .friends-grid {
     grid-template-columns: 1fr;

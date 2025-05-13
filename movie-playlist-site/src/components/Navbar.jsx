@@ -103,9 +103,7 @@ const Navbar = () => {
             <a href="/playlists" className={isActive('/playlists')} onClick={(e) => handleNavigate(e, '/playlists')}>
               Playlists
             </a>
-            <a href="/mood" className={isActive('/mood')} onClick={(e) => handleNavigate(e, '/mood')}>
-              Mood
-            </a>
+
             <a href="/social" className={isActive('/social')} onClick={(e) => handleNavigate(e, '/social')}>
               Social
             </a>
