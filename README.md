@@ -1,2 +1,2 @@
-# Movie-Playlist-Site
+# Binged
 Movie playlist recommendation system with AI
