@@ -59,7 +59,21 @@ export const UserProvider = ({ children }) => {
       });
       if (error) return { success: false, message: error.message };
       setSession(data.session);
-      return { success: true, user: data.user };
+      // Fetch full user profile with playlists and watchedMovies
+      const userId = data.user.id;
+      // Fetch user profile
+      const userProfile = await usersService.getUserById(userId);
+      // Fetch playlists and watchedMovies
+      const playlists = await playlistsService.getUserPlaylists(userId);
+      let watchedMovies = [];
+      try {
+        watchedMovies = await watchedMoviesService.getWatchedMovies(userId);
+      } catch (e) {
+        watchedMovies = [];
+      }
+      setCurrentUser({ ...userProfile, playlists, watchedMovies });
+      setLoading(false);
+      return { success: true, user: { ...userProfile, playlists, watchedMovies } };
     } catch (err) {
       return { success: false, message: err.message };
     }
@@ -164,10 +178,10 @@ export const UserProvider = ({ children }) => {
     return friends
       .filter(f => 
         f.status === 'accepted' && 
-        (f.user1Id === currentUser.id || f.user2Id === currentUser.id)
+        (f.user_id === currentUser.id || f.friend_id === currentUser.id)
       )
-      .map(f => {
-        const friendId = f.user1Id === currentUser.id ? f.user2Id : f.user1Id;
+      .map(f => { 
+        const friendId = f.user_id === currentUser.id ? f.friend_id : f.user_id;
         const friendUser = users.find(u => u.id === friendId);
         
         if (friendUser) {
@@ -235,63 +249,67 @@ export const UserProvider = ({ children }) => {
     }
   }, [currentUser]);
 
+  const declineFriendRequest = useCallback(async (friendId) => {
+    if (!currentUser) return { success: false, message: 'Not logged in' };
+    try {
+      // Use new friendsService.declineFriendRequest (composite key logic handled in service)
+      await friendsService.declineFriendRequest(currentUser.id, friendId);
+      setFriends(getActiveFriends());
+      return { success: true };
+    } catch (error) {
+      console.error('Error declining friend request:', error);
+      return { success: false, message: error.message };
+    }
+  }, [currentUser, getActiveFriends, getFriendRequests]);
+
   const calculateBlendCompatibility = (userId) => {
     if (!currentUser) return 0;
-    
     const otherUser = users.find(user => user.id === userId);
     if (!otherUser) return 0;
-    
-    // Compare liked movies - safely handle missing arrays with default empty arrays
-    const myLiked = new Set((currentUser.likedMovies || []).map(m => m.id));
-    const theirLiked = new Set((otherUser.likedMovies || []).map(m => m.id));
-    
+    // Helper to get liked movie IDs from the Liked playlist
+    const getLikedMovieIds = (user) => {
+      const likedPlaylist = user.playlists?.find(p => p.name === 'Liked');
+      return likedPlaylist ? likedPlaylist.movies.map(m => m.movie_id || m.id) : [];
+    };
+    const myLiked = new Set(getLikedMovieIds(currentUser));
+    const theirLiked = new Set(getLikedMovieIds(otherUser));
     // Get movie IDs from playlists
     const myPlaylistMovies = new Set();
     const theirPlaylistMovies = new Set();
-    
-    // Extract movie IDs from current user's playlists
     if (currentUser.playlists && currentUser.playlists.length > 0) {
       currentUser.playlists.forEach(playlist => {
         if (playlist.movies && playlist.movies.length > 0) {
           playlist.movies.forEach(movie => {
-            if (movie && movie.id) {
-              myPlaylistMovies.add(movie.id);
+            if (movie && (movie.movie_id || movie.id)) {
+              myPlaylistMovies.add(movie.movie_id || movie.id);
             }
           });
         }
       });
     }
-
-    // Extract movie IDs from other user's playlists
     if (otherUser.playlists && otherUser.playlists.length > 0) {
       otherUser.playlists.forEach(playlist => {
         if (playlist.movies && playlist.movies.length > 0) {
           playlist.movies.forEach(movie => {
-            if (movie && movie.id) {
-              theirPlaylistMovies.add(movie.id);
+            if (movie && (movie.movie_id || movie.id)) {
+              theirPlaylistMovies.add(movie.movie_id || movie.id);
             }
           });
         }
       });
     }
-
     // Combine liked movies with playlist movies
     const allMyMovies = new Set([...myLiked, ...myPlaylistMovies]);
     const allTheirMovies = new Set([...theirLiked, ...theirPlaylistMovies]);
-    
     // Intersection of all movies (common movies)
     const commonMovies = [...allMyMovies].filter(id => allTheirMovies.has(id));
-    
     // Calculate compatibility percentage
     const totalUniqueMovies = new Set([...allMyMovies, ...allTheirMovies]);
-    
     const movieOverlapScore = totalUniqueMovies.size > 0 
       ? Math.round((commonMovies.length / totalUniqueMovies.size) * 100)
       : 0;
-    
     // Calculate genre match percentage (50% movie overlap, 50% genre match)
     const genreMatchScore = calculateGenreMatchPercentage(currentUser.id, userId);
-    
     // Weighted average of both scores
     return Math.round((movieOverlapScore * 0.5) + (genreMatchScore * 0.5));
   };
@@ -352,7 +370,7 @@ export const UserProvider = ({ children }) => {
     if (!currentUser) return { success: false, message: 'Not logged in' };
     try {
       // Only update allowed fields
-      const allowed = ['username', 'bio', 'favoriteGenres'];
+      const allowed = ['username', 'bio'];
       const updateObj = {};
       allowed.forEach(key => {
         if (updates[key] !== undefined) updateObj[key] = updates[key];
@@ -364,6 +382,7 @@ export const UserProvider = ({ children }) => {
         .eq('id', currentUser.id)
         .select()
         .single();
+
       if (error) return { success: false, message: error.message };
       // Optionally update password
       if (updates.password) {
@@ -385,12 +404,12 @@ export const UserProvider = ({ children }) => {
     if (user?.playlists) {
       user.playlists.forEach(playlist => {
         if (playlist.movies) {
-          playlist.movies.forEach(movie => movieSet.add(movie.id));
+          playlist.movies.forEach(movie => movieSet.add(movie.movie_id || movie.id));
         }
       });
     }
     if (user?.watchedMovies) {
-      user.watchedMovies.forEach(movie => movieSet.add(movie.id));
+      user.watchedMovies.forEach(movie => movieSet.add(movie.movie_id || movie.id));
     }
     return Array.from(movieSet);
   };
@@ -405,11 +424,14 @@ export const UserProvider = ({ children }) => {
     
     // Function to process a movie and count its genres
     const processMovie = (movie) => {
-      if (!movie.genre_ids && !movie.genres) return;
-      
-      // Handle both genre_ids array and genres object array
-      const genres = movie.genre_ids || (movie.genres ? movie.genres.map(g => g.id) : []);
-      
+      let genres = [];
+      if (movie.genre_ids) {
+        genres = movie.genre_ids;
+      } else if (movie.genres) {
+        genres = movie.genres.map(g => g.id);
+      } else if (movie.movie_genre) {
+        genres = movie.movie_genre.map(g => g.genre_id);
+      }
       genres.forEach(genreId => {
         const genreName = getGenreName(genreId);
         if (genreName) {
@@ -418,6 +440,7 @@ export const UserProvider = ({ children }) => {
         }
       });
     };
+
     
     // Process watched and liked playlists with higher weight
     user.playlists.forEach(playlist => {
@@ -437,7 +460,7 @@ export const UserProvider = ({ children }) => {
         
         // Give even more weight to movies that are both watched and liked
         if (isWatched && user.playlists.some(p => 
-          p.name === 'Liked' && p.movies && p.movies.some(m => m.id === movie.id))
+          p.name === 'Liked' && p.movies && p.movies.some(m => m.movie_id === movie.movie_id))
         ) {
           processMovie(movie); // Process a third time for extra-extra weight
         }
@@ -491,102 +514,91 @@ export const UserProvider = ({ children }) => {
   // Get movie recommendations based on shared tastes with a friend
   const getSharedTasteRecommendations = (friendId) => {
     if (!currentUser) return [];
-    
+
     const friend = users.find(user => user.id === friendId);
     if (!friend || !friend.playlists) return [];
-    
+
     const myProfile = calculateUserTasteProfile();
     const friendProfile = calculateUserTasteProfile(friendId);
-    
+
     // Find common strong genres (both users have at least 10% interest)
     const commonGenres = Object.keys(myProfile).filter(genre => 
       myProfile[genre] >= 10 && friendProfile[genre] >= 10
     );
-    
+
     // Get genre IDs from names
     const commonGenreIds = commonGenres.map(getGenreId).filter(Boolean);
-    
+
+
     // If no common genres, use friend's top genres
-    const fallbackGenreIds = [];
-    if (commonGenreIds.length === 0) {
+    let genresToUse = commonGenreIds;
+    if (genresToUse.length === 0) {
       const topFriendGenres = Object.entries(friendProfile)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3)
         .map(([genre]) => getGenreId(genre))
         .filter(Boolean);
-      
-      fallbackGenreIds.push(...topFriendGenres);
+      genresToUse = topFriendGenres;
     }
-    
-    // Use either common genres or fallback to friend's top genres
-    const genresToUse = commonGenreIds.length > 0 ? commonGenreIds : fallbackGenreIds;
-    
-    // Get all movies from friend's playlists that I haven't watched
-    const myWatchedIds = new Set();
-    const recommendations = [];
-    
+
     // Get all my watched movie IDs
+    const myWatchedIds = new Set();
     if (currentUser.playlists) {
       currentUser.playlists.forEach(playlist => {
         if (playlist.movies) {
           playlist.movies.forEach(movie => {
-            myWatchedIds.add(movie.id);
-          });
-        }
-      });
-    }
-    
-    // Find movies from friend's playlists that match target genres
-    if (friend.playlists) {
-      friend.playlists.forEach(playlist => {
-        if (playlist.movies) {
-          playlist.movies.forEach(movie => {
-            // Skip if I've already watched this movie
-            if (myWatchedIds.has(movie.id)) return;
-            
-            // Check if movie has any of our target genres
-            const movieGenreIds = movie.genre_ids || 
-              (movie.genres ? movie.genres.map(g => g.id) : []);
-            
-            const hasTargetGenre = movieGenreIds.some(genreId => 
-              genresToUse.includes(genreId)
-            );
-            
-            if (hasTargetGenre || genresToUse.length === 0) {
-              // Add to recommendations if not already added
-              if (!recommendations.some(rec => rec.id === movie.id)) {
-                recommendations.push(movie);
-              }
+            const id = movie.movie_id || movie.id;
+            if (id !== undefined && id !== null) {
+              myWatchedIds.add(id);
             }
           });
         }
       });
     }
-    
-    // If we still don't have recommendations, include some of friend's highest rated movies
-    if (recommendations.length === 0 && friend.playlists) {
-      const allFriendMovies = [];
-      
+    // Find movies from friend's playlists that match target genres and I haven't watched
+    let recommendations = [];
+    if (friend.playlists) {
       friend.playlists.forEach(playlist => {
         if (playlist.movies) {
           playlist.movies.forEach(movie => {
-            if (!myWatchedIds.has(movie.id)) {
+            const id = movie.movie_id || movie.id;
+            if (myWatchedIds.has(id)) return;
+            const movieGenreIds = movie.genre_ids || (movie.genres ? movie.genres.map(g => g.id) : []);
+            const hasTargetGenre = movieGenreIds.some(genreId => genresToUse.includes(genreId));
+            if ((hasTargetGenre || genresToUse.length === 0) && !recommendations.some(rec => (rec.movie_id || rec.id) === id)) {
+              recommendations.push(movie);
+            }
+          });
+        }
+      });
+    }
+    // If still no recommendations, include some of friend's highest rated movies you haven't watched
+    if (recommendations.length === 0 && friend.playlists) {
+      const allFriendMovies = [];
+      friend.playlists.forEach(playlist => {
+        if (playlist.movies) {
+          playlist.movies.forEach(movie => {
+            const id = movie.movie_id || movie.id;
+            if (!myWatchedIds.has(id)) {
               allFriendMovies.push(movie);
             }
           });
         }
       });
-      
       // Get top rated movies from friend
       const topRatedMovies = allFriendMovies
         .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0))
         .slice(0, 6);
-        
       recommendations.push(...topRatedMovies);
     }
+
+    // remove dupes
+    const uniqueRecommendations = recommendations.filter((movie, index, self) =>
+      index === self.findIndex((t) => (t.movie_id || t.id) === (movie.movie_id || movie.id))
+    );
     
     // Sort by vote average (highest rated first)
-    return recommendations
+    return uniqueRecommendations
       .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0))
       .slice(0, 6); // Limit to 6 recommendations
   };
@@ -614,7 +626,7 @@ export const UserProvider = ({ children }) => {
       currentUser.playlists.forEach(playlist => {
         if (playlist.movies) {
           playlist.movies.forEach(movie => {
-            watchedMovieIds.add(movie.id);
+            watchedMovieIds.add(movie.movie_id || movie.id);
           });
         }
       });
@@ -631,7 +643,7 @@ export const UserProvider = ({ children }) => {
           if (playlist.movies) {
             playlist.movies.forEach(movie => {
               // Skip if already watched
-              if (watchedMovieIds.has(movie.id)) return;
+              if (watchedMovieIds.has(movie.movie_id || movie.id)) return;
               
               // Check if the movie matches any of the top genres
               const movieGenreIds = movie.genre_ids || 
@@ -643,7 +655,7 @@ export const UserProvider = ({ children }) => {
               
               if (matchesTopGenre) {
                 // Add to recommendations if not already in the list
-                if (!allRecommendations.some(rec => rec.id === movie.id)) {
+                if (!allRecommendations.some(rec => (rec.movie_id || rec.id) === (movie.movie_id || movie.id))) {
                   allRecommendations.push({
                     ...movie,
                     recommendationScore: calculateRecommendationScore(movie, tasteProfile)
@@ -734,26 +746,57 @@ export const UserProvider = ({ children }) => {
     return genreMap[genreName];
   };
 
+  const getFriendshipStatus = (otherUserId) => {
+    if (!currentUser) return null;
+    const friendship = friends.find(f =>
+      (f.user_id === currentUser.id && f.friend_id === otherUserId) ||
+      (f.user_id === otherUserId && f.friend_id === currentUser.id)
+    );
+    return friendship ? friendship.status : null;
+  };
+
+  const removeFriend = async (friendId) => {
+    if (!currentUser) return { success: false, message: 'Not logged in' };
+    try {
+      // Remove the friendship from Supabase (handle both directions)
+      await friendsService.removeFriend(currentUser.id, friendId);
+      // Update local state
+      setFriends(prev => prev.filter(f => f.id !== friendId));
+      return { success: true };
+    } catch (error) {
+      console.error('Error removing friend:', error);
+      return { success: false, message: error.message };
+    }
+  };
+
   return (
     <UserContext.Provider
       value={{
         currentUser,
+        setCurrentUser,
         users,
         friends,
+        loading,
+        session,
         register,
         login,
         logout,
         addFriend,
         acceptFriendRequest,
+        declineFriendRequest,
         getActiveFriends,
         getFriendRequests,
         calculateBlendCompatibility,
         updateProfile,
+        getAllUserMovies,
+        addToWatched,
         addToDefaultPlaylist,
         calculateUserTasteProfile,
         calculateGenreMatchPercentage,
         getSharedTasteRecommendations,
-        getPersonalizedRecommendations
+        getPersonalizedRecommendations,
+        getFriendshipStatus,
+        removeFriend
       }}
     >
       {children}

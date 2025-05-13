@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import ReactMarkdown from "react-markdown";
 import { playlistsService, moviesService, customUserMovieService } from "../services/databaseSupabase";
 
 const ANIMATION_DURATION = 350; // ms
@@ -14,7 +15,10 @@ const Chatbot = () => {
       - Do not hallucinate. If you don't know the answer, say so.
       - Keep your responses concise and to the point.
       - Use a fun, conversational tone.
-      ` }
+      - Use markdown for formatting (e.g., **bold**, *italic*, lists, and code blocks).
+      - Use double newlines to separate paragraphs.
+      - Use lists for recommendations.
+    ` }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -92,9 +96,14 @@ const Chatbot = () => {
     const watchedTitles = watched?.map(w => w.movie?.title).filter(Boolean).join(", ") || "none";
     const recommendedTitles = recommended?.map(m => m.title).join(", ") || "none";
     const age = user?.date_of_birth ? Math.floor((new Date() - new Date(user.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000)) : "N/A";
+    const dob = user?.date_of_birth || "N/A";
+    const bio = user?.bio || "No bio provided.";
+    const username = user?.username || "Unknown";
+    const name = user?.name || "Unknown";
     console.log("Building context prompt with user data");
     return `
-    User info: ${user?.username || "Unknown"}, age: ${age}\n
+    User info: username: ${username}, name: ${name}, age: ${age}, date of birth: ${dob}\n
+    Bio: ${bio}\n
     Playlists: ${playlistNames}\n
     Watched movies: ${watchedTitles}\n
     Most watched genre: ${mostWatchedGenre || "Not enough data"}\n
@@ -235,7 +244,7 @@ const Chatbot = () => {
                 (m.role === "user" ? "user" : "bot")
                 }
             >
-                {m.content}
+              <ReactMarkdown>{m.content}</ReactMarkdown>
             </div>
             </div>
           ))}

@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import './Social.css';
 
 const Social = () => {
-  const { currentUser, users, addFriend, acceptFriendRequest, getActiveFriends, getFriendRequests, calculateUserTasteProfile, calculateGenreMatchPercentage, getSharedTasteRecommendations } = useUser();
+  const { currentUser, users, addFriend, acceptFriendRequest, declineFriendRequest, getActiveFriends, getFriendRequests, calculateUserTasteProfile, calculateGenreMatchPercentage, getSharedTasteRecommendations, getFriendshipStatus, removeFriend } = useUser();
   const { themeColors } = useTheme();
   const navigate = useNavigate();
   
@@ -91,6 +91,14 @@ const Social = () => {
       setFriendRequests(getFriendRequests());
     }
   };
+
+  const handleDeclineRequest = (friendId) => {
+    const result = declineFriendRequest(friendId);
+    if (result.success) {
+      setFriends(getActiveFriends());
+      setFriendRequests(getFriendRequests());
+    }
+  };
   
   const handleSelectFriend = (friend) => {
     if (selectedFriend && selectedFriend.id === friend.id) {
@@ -102,6 +110,18 @@ const Social = () => {
   
   const handleNavigateToMovie = (movieId) => {
     navigate(`/movie/${movieId}`);
+  };
+  
+  const handleRemoveFriend = async (friendId) => {
+    if (window.confirm('Are you sure you want to remove this friend?')) {
+      try {
+        await removeFriend(friendId);
+        setFriends(getActiveFriends());
+        setSelectedFriend(null);
+      } catch (err) {
+        alert('Failed to remove friend.');
+      }
+    }
   };
   
   // Render blends visualization based on compatibility score
@@ -215,6 +235,15 @@ const Social = () => {
                         >
                           {selectedFriend?.id === friend.id ? '▲' : '▼'}
                         </button>
+                        <button
+                          className="remove-friend-btn"
+                          style={{ color: 'red', fontWeight: 'bold', fontSize: '1.2rem', background: 'none', border: 'none', cursor: 'pointer', marginLeft: 8 }}
+                          title="Remove Friend"
+                          aria-label="Remove Friend"
+                          onClick={e => { e.stopPropagation(); handleRemoveFriend(friend.id); setSelectedFriend(null); }}
+                        >
+                          ✖
+                        </button>
                       </div>
                     </div>
                     
@@ -238,7 +267,7 @@ const Social = () => {
                                 <div 
                                   key={movie.id} 
                                   className="recommended-movie"
-                                  onClick={() => handleNavigateToMovie(movie.id)}
+                                  onClick={() => handleNavigateToMovie(movie.movie_id)}
                                   style={{
                                     transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                                     cursor: 'pointer',
@@ -249,7 +278,7 @@ const Social = () => {
                                   <img 
                                     src={movie.poster_path 
                                       ? `https://image.tmdb.org/t/p/w200${movie.poster_path}`
-                                      : 'https://via.placeholder.com/200x300?text=No+Poster'
+                                      : 'https://dummyimage.com/200x300/000/fff&text=No+Poster'
                                     } 
                                     alt={movie.title} 
                                     className="movie-poster"
@@ -320,11 +349,16 @@ const Social = () => {
                     <div className="request-actions">
                       <button 
                         className="button"
-                        onClick={() => handleAcceptRequest(request.friendshipId)}
+                        onClick={() => handleAcceptRequest(request.user.id)}
                       >
                         Accept
                       </button>
-                      <button className="button-secondary">Decline</button>
+                      <button
+                        className="button-secondary"
+                        onClick={() => handleDeclineRequest(request.user.id)}
+                      >
+                        Decline
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -358,10 +392,7 @@ const Social = () => {
             {searchResults.length > 0 ? (
               <div className="search-results">
                 {searchResults.map(user => {
-                  // Check if a friend request has already been sent or received
-                  const isFriend = friends.some(friend => friend.id === user.id);
-                  const requestSent = user.requestSent || friends.some(f => f.id === user.id);
-                  
+                  const status = getFriendshipStatus(user.id);
                   return (
                     <div key={user.id} className="user-card">
                       <div className="user-avatar">
@@ -371,9 +402,9 @@ const Social = () => {
                         <h3>{user.username}</h3>
                       </div>
                       <div className="user-actions">
-                        {isFriend ? (
+                        {status === 'accepted' ? (
                           <span className="status-connected">Connected</span>
-                        ) : requestSent ? (
+                        ) : status === 'pending' ? (
                           <span className="status-pending">Request Sent</span>
                         ) : (
                           <button 

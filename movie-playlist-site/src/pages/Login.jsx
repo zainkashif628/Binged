@@ -69,13 +69,9 @@ const Login = () => {
 
       // 5. Fetch social connections
       const { data: connections, error: connectionsError } = await supabase
-        .from('user_connections')
+        .from('friendship')
         .select('*')
-        .eq('user_id', user.id);
-
-      if (!connectionsError && connections) {
-        localStorage.setItem('userConnections', JSON.stringify(connections));
-      }
+        .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
 
       // 6. Set up real-time subscriptions
       const playlistsSubscription = supabase
@@ -112,24 +108,11 @@ const Login = () => {
           {
             event: '*',
             schema: 'public',
-            table: 'user_connections',
+            table: 'friendship',
             filter: `user_id=eq.${user.id}`
           },
           (payload) => {
-            const currentConnections = JSON.parse(localStorage.getItem('userConnections') || '[]');
-            if (payload.eventType === 'INSERT') {
-              localStorage.setItem('userConnections', JSON.stringify([...currentConnections, payload.new]));
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedConnections = currentConnections.map(connection =>
-                connection.id === payload.new.id ? payload.new : connection
-              );
-              localStorage.setItem('userConnections', JSON.stringify(updatedConnections));
-            } else if (payload.eventType === 'DELETE') {
-              const filteredConnections = currentConnections.filter(connection =>
-                connection.id !== payload.old.id
-              );
-              localStorage.setItem('userConnections', JSON.stringify(filteredConnections));
-            }
+            // Handle real-time updates if needed (no localStorage)
           }
         )
         .subscribe();
@@ -139,12 +122,12 @@ const Login = () => {
         social: socialSubscription
       });
 
-      // Navigate to profile
+      // Navigate to home
       if (!hasNavigated.current) {
         hasNavigated.current = true;
         const params = new URLSearchParams(location.search);
         const from = params.get('from');
-        navigate(from || '/profile', { replace: true });
+        navigate(from || '/home', { replace: true });
       }
     } catch (err) {
       console.error('Login error:', err);

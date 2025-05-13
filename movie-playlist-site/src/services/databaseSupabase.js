@@ -19,6 +19,23 @@ export const usersService = {
     const { data, error } = await supabase.from('user').select('username').eq('id', userId).single();
     if (error) throw error;
     return data.username;
+  },
+
+  async updateUser(userId, updates) {
+    // Only allow updating username and bio
+    const allowed = ['username', 'bio'];
+    const updateObj = {};
+    allowed.forEach(key => {
+      if (updates[key] !== undefined) updateObj[key] = updates[key];
+    });
+    const { data, error } = await supabase
+      .from('user')
+      .update(updateObj)
+      .eq('id', userId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 };
 
@@ -62,6 +79,31 @@ export const friendsService = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  async declineFriendRequest(userId, friendId) {
+    // Decline means delete the friendship row (pending request)
+    const least_id = userId < friendId ? userId : friendId;
+    const greatest_id = userId > friendId ? userId : friendId;
+    const { error } = await supabase
+      .from('friendship')
+      .delete()
+      .eq('least_id', least_id)
+      .eq('greatest_id', greatest_id);
+    if (error) throw error;
+  }, 
+
+  // Remove a friend (delete friendship row)
+  async removeFriend(userId, friendId) {
+    // Always use composite key (least_id, greatest_id)
+    const least_id = userId < friendId ? userId : friendId;
+    const greatest_id = userId > friendId ? userId : friendId;
+    const { error } = await supabase
+      .from('friendship')
+      .delete()
+      .eq('least_id', least_id)
+      .eq('greatest_id', greatest_id);
+    if (error) throw error;
   }
 };
 
@@ -519,7 +561,10 @@ export const playlistsService = {
         movie_playlists (
           movie_id,
           movie (
-            *
+            *,
+            movie_genre (
+              genre_id
+            )
           )
         )
       `)
@@ -534,7 +579,8 @@ export const playlistsService = {
       name: playlist.name,
       status: playlist.status,
       user_id: playlist.user_id,
-      movies: playlist.movie_playlists.map(mp => mp.movie)
+      movies: playlist.movie_playlists.map(mp => mp.movie),
+      genre_ids: playlist.movie_playlists.map(mp => mp.movie.movie_genre ? mp.movie.movie_genre.map(g => g.genre_id) : [])
     }));
   },
 

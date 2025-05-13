@@ -226,19 +226,27 @@
   align-items: center;
   padding: var(--spacing-md);
   margin: var(--spacing-md) auto;
-  max-width: 500px;
+  max-width: 700px;
   position: relative;
 }
 
-.taste-profile-chart canvas {
-  margin: var(--spacing-md) auto;
-  max-height: 350px !important;
-  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.15));
-  transition: all 0.3s ease;
+/* Flex layout for chart and legend side by side */
+.taste-profile-flex {
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 40px;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: auto;
 }
 
-.taste-profile-chart canvas:hover {
-  filter: drop-shadow(0 8px 15px rgba(0, 0, 0, 0.25));
+.taste-profile-pie-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 500px;
+  min-height: 380px;
 }
 
 .taste-bar-container {
@@ -286,6 +294,43 @@
   border-radius: 4px;
   font-size: 0.95rem;
   line-height: 1.5;
+}
+
+/* Make legend font bigger and allow wrapping */
+.taste-profile-chart .chartjs-legend li span {
+  font-size: 1.1rem !important;
+}
+
+/* Ensure legend area doesn't get cut off */
+.taste-profile-chart .chartjs-legend {
+  min-width: 180px;
+  max-width: 320px;
+  overflow-x: auto;
+}
+
+/* Two-column legend with spacing */
+.taste-profile-chart .chartjs-legend ul,
+.taste-profile-chart ul.chartjs-legend,
+.taste-profile-chart .chartjs-legend ul.chartjs-legend {
+  display: block !important;
+  min-width: 180px !important;
+  max-width: 220px !important;
+  width: 100% !important;
+  padding: 0 8px !important;
+  margin: 0 !important;
+  overflow-y: auto !important;
+  max-height: 380px !important;
+  column-count: 1 !important;
+  column-gap: 0 !important;
+}
+
+.taste-profile-chart .chartjs-legend li,
+.taste-profile-chart ul.chartjs-legend li {
+  display: block !important;
+  width: 100% !important;
+  margin-bottom: 12px !important;
+  margin-right: 8px !important;
+  break-inside: avoid !important;
 }
 
 @media (max-width: 768px) {

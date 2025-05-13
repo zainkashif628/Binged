@@ -6,7 +6,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { moviesService as supabaseService } from '../services/databaseSupabase';
 import { useUser } from '../contexts/UserContext';
 import PlaylistDropdown from '../components/PlaylistDropdown';
-import { getRecommendations } from '../services/recommendationService';
 
 import './Home.css';
 
@@ -52,16 +51,6 @@ const Home = () => {
         
         const upcoming = await supabaseService.getUpcomingMovies();
         // console.log(`Fetched ${upcoming?.length || 0} upcoming movies`);
-        
-        if (currentUser?.id) {
-          try {
-            const recommendations = await getRecommendations(currentUser.id);
-            console.log("Fetched recommendations:", recommendations);
-            setRecommendedMovies(recommendations);
-          } catch (err) {
-            console.error('Error fetching recommendations:', err);
-          }
-        }
 
         // fetch movie backdrops for hero section
         const potentialHeroMovies = await supabaseService.getHeroMovies();
@@ -329,24 +318,6 @@ const Home = () => {
                 ))}
               </div>
             </div>
-
-          {/* Recommended Movies Section - Only show if user is logged in */}
-          {currentUser && recommendedMovies.length > 0 && (
-            <div className="movie-section">
-              <h2 className="section-title" style={titleStyle}>Recommended for You 🎯</h2>
-              <div className="movie-row">
-                {recommendedMovies.slice(0, 6).map((movie) => (
-                  <div className="movie-card-container" key={movie.movie_id || movie.id}>
-                    <MovieCard
-                      movie={movie}
-                      showAddToPlaylist
-                      onAddToPlaylist={handleAddToPlaylist}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
             {/* Horror Movies Section */}
             <div className="movie-section">

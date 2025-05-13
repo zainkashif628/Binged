@@ -50,7 +50,8 @@ const Navbar = () => {
   // Enhanced navigation handler that uses direct programmatic navigation
   const handleNavigate = (e, path) => {
     e.preventDefault(); // Prevent default link behavior
-    e.stopPropagation(); // Stop event propagation
+    e.stopPropagation(); // Stop event propagatio
+    
     setMenuOpen(false);
     setUserDropdownOpen(false);
     

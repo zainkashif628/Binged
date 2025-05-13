@@ -17,8 +17,7 @@ const Profile = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    bio: '',
-    favoriteGenres: []
+    bio: ''
   });
   
   const [mode, setMode] = useState('view'); // 'view' or 'edit'
@@ -30,12 +29,27 @@ const Profile = () => {
   });
   const [tasteProfile, setTasteProfile] = useState({});
   
-  // Genres list
-  const genres = [
-    "Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama", 
-    "Family", "Fantasy", "History", "Horror", "Music", "Mystery", "Romance", 
-    "Science Fiction", "TV Movie", "Thriller", "War", "Western"
-  ];
+  // Distinct color for each genre (colorblind-friendly palette)
+  const genreColors = {
+    Action: '#e6194b',
+    Adventure: '#3cb44b',
+    Animation: '#ffe119',
+    Comedy: '#4363d8',
+    Crime: '#f58231',
+    Documentary: '#911eb4',
+    Drama: '#46f0f0',
+    Family: '#f032e6',
+    Fantasy: '#bcf60c',
+    History: '#fabebe',
+    Horror: '#008080',
+    Music: '#e6beff',
+    Mystery: '#9a6324',
+    Romance: '#fffac8',
+    'Science Fiction': '#800000',
+    Thriller: '#808000',
+    War: '#ffd8b1',
+    Western: '#000075'
+  };
   
   useEffect(() => {
     if (currentUser) {
@@ -44,18 +58,16 @@ const Profile = () => {
         email: currentUser.email || '',
         password: '',
         confirmPassword: '',
-        bio: currentUser.bio || '',
-        favoriteGenres: currentUser.favoriteGenres || []
+        bio: currentUser.bio || ''
       });
-      
+      // Get liked movies from the Liked playlist
+      const likedPlaylist = (currentUser.playlists || []).find(p => p.name === 'Liked');
+      const likedMovies = likedPlaylist ? likedPlaylist.movies : [];
       // Calculate stats
-      const totalMovies = (currentUser.watchedMovies || []).length + 
-                        (currentUser.likedMovies || []).length;
+      const totalMovies = (currentUser.watchedMovies || []).length + likedMovies.length;
       const totalPlaylists = (currentUser.playlists || []).length;
       const totalFriends = 0; // We would calculate friends count from context
-      
       setStats({ totalMovies, totalPlaylists, totalFriends });
-
       // Calculate taste profile from watched and liked movies
       const profile = calculateUserTasteProfile();
       setTasteProfile(profile);
@@ -138,22 +150,6 @@ const Profile = () => {
     });
   };
   
-  const handleGenreToggle = (genre) => {
-    setFormData(prev => {
-      if (prev.favoriteGenres.includes(genre)) {
-        return {
-          ...prev,
-          favoriteGenres: prev.favoriteGenres.filter(g => g !== genre)
-        };
-      } else {
-        return {
-          ...prev,
-          favoriteGenres: [...prev.favoriteGenres, genre]
-        };
-      }
-    });
-  };
-  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage(null);
@@ -168,8 +164,7 @@ const Profile = () => {
     
     const updates = {
       username: formData.username,
-      bio: formData.bio,
-      favoriteGenres: formData.favoriteGenres
+      bio: formData.bio
     };
     
     // Only include password in updates if it was changed
@@ -178,8 +173,8 @@ const Profile = () => {
     }
     
     try {
-      const result = updateProfile(updates);
-      
+      const result = await updateProfile(updates);
+      console.log("result", result);
       if (result.success) {
         setMessage({
           type: 'success',
@@ -250,92 +245,82 @@ const Profile = () => {
             <p className="section-description">Based on your watched and liked movies</p>
             
             {Object.keys(tasteProfile).length > 0 ? (
-              <div className="taste-profile-chart">
-                <Pie
-                  data={{
-                    labels: Object.keys(tasteProfile),
-                    datasets: [
-                      {
-                        data: Object.values(tasteProfile),
-                        backgroundColor: Object.keys(tasteProfile).map((_, index, array) => {
-                          // Create a range of blue shades from primary blue (#2962ff) to lighter blue (#82b1ff)
-                          const baseHue = 220; // Blue hue
-                          const saturation = 85;
-                          const minLightness = 45;
-                          const maxLightness = 75;
-                          // Calculate position in the array to determine lightness value
-                          const lightness = minLightness + ((maxLightness - minLightness) * (index / Math.max(array.length - 1, 1)));
-                          return `hsl(${baseHue}, ${saturation}%, ${lightness}%)`;
-                        }),
-                        borderWidth: 2,
-                        borderColor: themeColors.surface,
-                        hoverBorderColor: themeColors.primary,
-                        hoverBorderWidth: 3,
-                      },
-                    ],
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                      legend: {
-                        position: 'right',
-                        labels: {
-                          color: themeColors.text,
-                          padding: 15,
-                          usePointStyle: true,
-                          font: {
-                            size: 12
+              <div className="taste-profile-chart taste-profile-flex" style={{overflowX: 'auto'}}>
+                <div className="taste-profile-pie-wrapper">
+                  <Pie
+                    data={{
+                      labels: Object.keys(tasteProfile),
+                      datasets: [
+                        {
+                          data: Object.values(tasteProfile),
+                          backgroundColor: Object.keys(tasteProfile).map(
+                            genre => genreColors[genre] || '#cccccc'
+                          ),
+                          borderWidth: 2,
+                          borderColor: themeColors.surface,
+                          hoverBorderColor: themeColors.primary,
+                          hoverBorderWidth: 6,
+                        },
+                      ],
+                    }}
+                    width={370}
+                    height={370}
+                    options={{
+                      responsive: false,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          position: 'right',
+                          labels: {
+                            color: themeColors.text,
+                            padding: 10,
+                            usePointStyle: true,
+                            font: {
+                              size: 14
+                            },
+                            boxWidth: 22,
+                            boxHeight: 16,
+                            maxWidth: 400,
+                            maxHeight: 380,
+                          },
+                          title: {
+                            position: 'left',
+                            display: true,
+                            text: 'Movie Genres',
+                            color: themeColors.textSecondary,
+                            font: {
+                              size: 16,
+                              weight: 'normal'
+                            }
                           }
                         },
-                        title: {
-                          display: true,
-                          text: 'Movie Genres',
-                          color: themeColors.textSecondary,
-                          font: {
-                            size: 14,
-                            weight: 'normal'
+                        tooltip: {
+                          backgroundColor: `${themeColors.surface}E6`,
+                          titleColor: themeColors.primary,
+                          bodyColor: themeColors.text,
+                          borderColor: themeColors.primary,
+                          borderWidth: 1,
+                          padding: 12,
+                          displayColors: true,
+                          callbacks: {
+                            title: (tooltipItems) => {
+                              return tooltipItems[0].label;
+                            },
+                            label: (context) => {
+                              return `${context.formattedValue}% of your movies`;
+                            }
                           }
                         }
                       },
-                      tooltip: {
-                        backgroundColor: `${themeColors.surface}E6`,
-                        titleColor: themeColors.primary,
-                        bodyColor: themeColors.text,
-                        borderColor: themeColors.primary,
-                        borderWidth: 1,
-                        padding: 12,
-                        displayColors: true,
-                        callbacks: {
-                          title: (tooltipItems) => {
-                            return tooltipItems[0].label;
-                          },
-                          label: (context) => {
-                            return `${context.formattedValue}% of your movies`;
-                          }
-                        }
-                      }
-                    },
-                  }}
-                />
+                    }}
+                  />
+                </div>
               </div>
             ) : (
               <p className="empty-profile-message">
                 Your taste profile will appear here after you've watched or liked some movies.
               </p>
             )}
-          </div>
-
-          <div className="profile-section" style={sectionStyle}>
-            <h3 style={{color: themeColors.primary}}>Favorite Genres</h3>
-            <div className="genre-tags">
-              {currentUser.favoriteGenres && currentUser.favoriteGenres.length > 0 ? 
-                currentUser.favoriteGenres.map(genre => (
-                  <span key={genre} className="genre-tag" style={genreTagStyle}>{genre}</span>
-                )) : 
-                <p style={{color: themeColors.textSecondary}}>No favorite genres selected yet.</p>
-              }
-            </div>
           </div>
           
           <div className="profile-actions">
@@ -420,22 +405,6 @@ const Profile = () => {
                 placeholder="Tell us about yourself and your movie tastes..."
                 style={inputStyle}
               />
-            </div>
-            
-            <div className="form-control">
-              <label style={{color: themeColors.textSecondary}}>Favorite Genres</label>
-              <div className="genre-selector">
-                {genres.map(genre => (
-                  <div 
-                    key={genre}
-                    className={`genre-option ${formData.favoriteGenres.includes(genre) ? 'selected' : ''}`}
-                    onClick={() => handleGenreToggle(genre)}
-                    style={formData.favoriteGenres.includes(genre) ? genreOptionSelectedStyle : genreOptionStyle}
-                  >
-                    {genre}
-                  </div>
-                ))}
-              </div>
             </div>
             
             <div className="profile-actions">
