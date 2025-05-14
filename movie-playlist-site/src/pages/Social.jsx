@@ -31,7 +31,7 @@ const Social = () => {
     if (selectedFriend) {
       const myProfile = calculateUserTasteProfile();
       const friendProfile = calculateUserTasteProfile(selectedFriend.id);
-      
+      // fnkjsnfkjs
       // Find common genres
       const commonGenresList = [];
       
