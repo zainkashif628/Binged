@@ -1,6 +1,7 @@
 // omdbService.js
-const TMDB_API_KEY = '6137d27c7dfa2531ac01bcb1f4a7f018';   // Replace with your TMDB API key
-const OMDB_API_KEY = '83284b22';   // Replace with your OMDb API key
+// Use environment variables for API keys. Set REACT_APP_TMDB_API_KEY and REACT_APP_OMDB_API_KEY in your .env file.
+const TMDB_API_KEY = process.env.REACT_APP_TMDB_API_KEY;   // TMDB API key
+const OMDB_API_KEY = process.env.REACT_APP_OMDB_API_KEY;   // OMDb API key
 
 // Step 1: Get IMDb ID from TMDB ID
 const getImdbIdFromTmdb = async (tmdbId) => {

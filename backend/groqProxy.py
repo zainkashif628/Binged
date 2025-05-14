@@ -7,7 +7,7 @@ app = Flask(__name__)
 CORS(app)
 
 GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
-GROQ_API_KEY = "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"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
