@@ -182,7 +182,8 @@ export default function ConfirmedPage() {
       textAlign: 'center',
       border: '1px solid #ccffcc',
       borderRadius: '10px',
-      backgroundColor: '#f8fff8'
+      backgroundColor: '#f8fff8',
+      color: 'black'
     }}>
       <h2>Email Confirmed Successfully!</h2>
       
