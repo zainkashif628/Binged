@@ -12,7 +12,7 @@ import './Playlists.css';
 
 // Use React.memo to prevent unnecessary re-renders of the entire component
 const Playlists = React.memo(() => {
-  const { currentUser } = useUser();
+  const { currentUser, users, getActiveFriends } = useUser();
   const { themeColors } = useTheme();
   const navigate = useNavigate();
   
@@ -22,6 +22,14 @@ const Playlists = React.memo(() => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [watchedMovies, setWatchedMovies] = useState([]);
+  
+  // State for send-to-friend modal
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [playlistToSend, setPlaylistToSend] = useState(null);
+  const [selectedFriendId, setSelectedFriendId] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState(null);
+  const [sendSuccess, setSendSuccess] = useState(null);
   
   // Stabilize component render cycles with a render counter
   const renderCount = React.useRef(0);
@@ -163,41 +171,53 @@ const Playlists = React.memo(() => {
   // Update a playlist
   const handleUpdatePlaylist = useCallback(async (updatedPlaylist) => {
     try {
-      // Update playlist details
-      await playlistsService.updatePlaylist(updatedPlaylist.id, {
-        name: updatedPlaylist.name,
-        status: updatedPlaylist.status
-      });
-      
+      // Update playlist details (skip for 'watched')
+      if (updatedPlaylist.id !== 'watched') {
+        await playlistsService.updatePlaylist(updatedPlaylist.id, {
+          name: updatedPlaylist.name,
+          status: updatedPlaylist.status
+        });
+      }
+
       // Update movies in playlist
       const currentPlaylist = playlists.find(p => p.id === updatedPlaylist.id);
       if (currentPlaylist) {
         // Find movies to add
         const moviesToAdd = updatedPlaylist.movies.filter(
-          newMovie => !currentPlaylist.movies.some(m => m.movie_id === newMovie.movie_id) && newMovie.movie_id
+          newMovie => !currentPlaylist.movies.some(m => (m.movie_id || m.id) === (newMovie.movie_id || newMovie.id)) && (newMovie.movie_id || newMovie.id)
         );
-        
         // Find movies to remove
         const moviesToRemove = currentPlaylist.movies.filter(
-          oldMovie => !updatedPlaylist.movies.some(m => m.movie_id === oldMovie.movie_id) && oldMovie.movie_id
+          oldMovie => !updatedPlaylist.movies.some(m => (m.movie_id || m.id) === (oldMovie.movie_id || oldMovie.id)) && (oldMovie.movie_id || oldMovie.id)
         );
-        
         // Add new movies
         for (const movie of moviesToAdd) {
-          if (movie.movie_id) {
-            await playlistsService.addMovieToPlaylist(updatedPlaylist.id, movie.movie_id);
+          const movieId = movie.movie_id || movie.id;
+          if (movieId) {
+            if (updatedPlaylist.id === 'watched') {
+              await watchedMoviesService.addWatchedMovie(currentUser.id, movieId);
+            } else {
+              await playlistsService.addMovieToPlaylist(updatedPlaylist.id, movieId);
+            }
           }
         }
-        
         // Remove old movies
+        console.log("idher aya 1");
         for (const movie of moviesToRemove) {
-          if (movie.movie_id) {
-            await playlistsService.removeMovieFromPlaylist(updatedPlaylist.id, movie.movie_id);
+          console.log("idher aya 2");
+          const movieId = movie.movie_id || movie.id;
+          if (movieId) {
+            console.log("idher aya 3");
+            if (updatedPlaylist.id === 'watched') {
+              console.log("idher aya 4");
+              await watchedMoviesService.removeWatchedMovie(currentUser.id, movieId);
+            } else {
+              console.log("idher aya 5");
+              await playlistsService.removeMovieFromPlaylist(updatedPlaylist.id, movieId);
+            }
           }
         }
       }
-      
-
       // Update local state
       setPlaylists(currentPlaylists => 
         currentPlaylists.map(playlist => 
@@ -208,7 +228,7 @@ const Playlists = React.memo(() => {
       console.error("Error updating playlist:", err);
       setError("Failed to update playlist. Please try again.");
     }
-  }, [playlists]);
+  }, [playlists, currentUser]);
   
   // Select a playlist to view/edit
   const handleSelectPlaylist = useCallback((playlistId) => {
@@ -237,6 +257,59 @@ const Playlists = React.memo(() => {
   const dismissError = () => {
     setError(null);
   };
+  
+  // Send playlist to friend
+  const handleSendPlaylist = useCallback((playlist) => {
+    setPlaylistToSend(playlist);
+    setShowSendModal(true);
+    setSelectedFriendId("");
+    setSendError(null);
+    setSendSuccess(null);
+  }, []);
+
+  const handleConfirmSend = useCallback(async () => {
+    if (!selectedFriendId || !playlistToSend) return;
+    setSending(true);
+    setSendError(null);
+    setSendSuccess(null);
+    try {
+      // Find the friend user object
+      const friend = users.find(u => u.id === selectedFriendId);
+      if (!friend) throw new Error("Friend not found");
+      // Prepare playlist data
+      // If playlist name already has a (from ...) suffix, replace it; otherwise, add it
+      const suffixRegex = /\s*\(from [^)]+\)$/;
+      let newPlaylistName;
+      if (suffixRegex.test(playlistToSend.name)) {
+        newPlaylistName = playlistToSend.name.replace(suffixRegex, ` (from ${currentUser.username})`);
+      } else {
+        newPlaylistName = `${playlistToSend.name} (from ${currentUser.username})`;
+      }
+      const newPlaylist = await playlistsService.createPlaylist({
+        name: newPlaylistName,
+        user_id: friend.id,
+        status: 'private'
+      });
+      // Add all movies to the new playlist
+      for (const movie of playlistToSend.movies) {
+        await playlistsService.addMovieToPlaylist(newPlaylist.playlist_id, movie.movie_id || movie.id);
+      }
+      setSendSuccess(`Playlist sent to ${friend.username}!`);
+      setTimeout(() => {
+        setShowSendModal(false);
+        setPlaylistToSend(null);
+        setSelectedFriendId("");
+        setSendSuccess(null);
+      }, 1500);
+    } catch (err) {
+      setSendError("Failed to send playlist. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  }, [selectedFriendId, playlistToSend, users, currentUser]);
+  
+  // In the send to friend modal, only show friends
+  const friendsList = getActiveFriends ? getActiveFriends() : [];
   
   // If user is not logged in, show auth prompt
   if (!currentUser) {
@@ -283,6 +356,7 @@ const Playlists = React.memo(() => {
                   selectedPlaylistId={selectedPlaylistId}
                   onSelectPlaylist={handleSelectPlaylist}
                   onDeletePlaylist={handleDeletePlaylist}
+                  onSendPlaylist={handleSendPlaylist}
                 />
               </div>
               
@@ -299,6 +373,37 @@ const Playlists = React.memo(() => {
                     <p style={{ color: themeColors.textSecondary }}>Choose a playlist from the sidebar or create a new one</p>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+          {/* Send to Friend Modal */}
+          {showSendModal && playlistToSend && (
+            <div className="send-modal-overlay" style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.3)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="send-modal" style={{ background: '#fff', padding: 32, borderRadius: 12, minWidth: 320, boxShadow: '0 4px 24px rgba(0,0,0,0.2)', position: 'relative' }}>
+                <button onClick={() => setShowSendModal(false)} style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', fontSize: 22, color: '#888', cursor: 'pointer' }}>×</button>
+                <h3 style={{ marginBottom: 16, color: 'black' }}>Send "{playlistToSend.name}" to a Friend</h3>
+                <label htmlFor="friend-select" style={{ color: 'black' }}>Select Friend:</label>
+                <select
+                  id="friend-select"
+                  value={selectedFriendId}
+                  onChange={e => setSelectedFriendId(e.target.value)}
+                  style={{ width: '100%', padding: 8, margin: '12px 0 20px 0', borderRadius: 6 }}
+                  disabled={sending}
+                >
+                  <option value="">Choose a friend...</option>
+                  {friendsList.filter(f => f.id !== currentUser.id).map(friend => (
+                    <option key={friend.id} value={friend.id}>{friend.username}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleConfirmSend}
+                  disabled={!selectedFriendId || sending}
+                  style={{ background: '#3498db', color: '#fff', padding: '8px 20px', borderRadius: 6, border: 'none', fontWeight: 600, cursor: sending ? 'not-allowed' : 'pointer' }}
+                >
+                  {sending ? 'Sending...' : 'Send Playlist'}
+                </button>
+                {sendError && <div style={{ color: 'red', marginTop: 12 }}>{sendError}</div>}
+                {sendSuccess && <div style={{ color: 'green', marginTop: 12 }}>{sendSuccess}</div>}
               </div>
             </div>
           )}

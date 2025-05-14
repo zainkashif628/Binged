@@ -7,7 +7,8 @@ const PlaylistsList = memo(({
   playlists, 
   selectedPlaylistId, 
   onSelectPlaylist, 
-  onDeletePlaylist 
+  onDeletePlaylist, 
+  onSendPlaylist 
 }) => {
   const { themeColors } = useTheme();
   
@@ -52,13 +53,23 @@ const PlaylistsList = memo(({
       ) : (
         <ul className="playlist-items">
           {sortedPlaylists.map(playlist => (
-            <PlaylistItem
-              key={playlist.id}
-              playlist={playlist}
-              isSelected={playlist.id === selectedPlaylistId}
-              onSelect={onSelectPlaylist}
-              onDelete={onDeletePlaylist}
-            />
+            <li key={playlist.id} className={`playlist-item ${playlist.id === selectedPlaylistId ? 'selected' : ''}`}> 
+              <PlaylistItem
+                playlist={playlist}
+                isSelected={playlist.id === selectedPlaylistId}
+                onSelect={onSelectPlaylist}
+                onDelete={onDeletePlaylist}
+              />
+              {playlist.name !== 'Watched' && (
+                <button
+                  className="send-playlist-btn"
+                  onClick={() => onSendPlaylist(playlist)}
+                  title="Send this playlist to a friend"
+                >
+                  Send to Friend
+                </button>
+              )}
+            </li>
           ))}
         </ul>
       )}

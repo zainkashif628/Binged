@@ -163,6 +163,7 @@ const PlaylistDetail = memo(({ playlist, onUpdatePlaylist }) => {
                 key={movie.id} 
                 movie={movie} 
                 onRemove={() => handleRemoveMovie(movie.id)} 
+                canRemove={playlist.id !== 'watched'}
               />
             ))}
           </div>

@@ -4,7 +4,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useUser } from "../contexts/UserContext";
 import './PlaylistMovieItem.css';
 
-const PlaylistMovieItem = ({ movie, onRemove }) => {
+const PlaylistMovieItem = ({ movie, onRemove, canRemove = true }) => {
   const navigate = useNavigate();
   const { themeColors } = useTheme();
   const { currentUser, addToDefaultPlaylist } = useUser();
@@ -34,7 +34,7 @@ const PlaylistMovieItem = ({ movie, onRemove }) => {
 
   const handleCardClick = () => {
     // Navigate to movie detail page
-    navigate(`/movie/${movie.id}`);
+    navigate(`/movie/${movie.movie_id}`);
   };
 
   const handleRemoveClick = (e) => {
@@ -88,12 +88,12 @@ const PlaylistMovieItem = ({ movie, onRemove }) => {
           alt={movie.title}
           loading="lazy"
         />
-        {movie.vote_average && (
+        {movie.vote_avg && (
           <div className="rating" style={{ 
             backgroundColor: `${themeColors.surface}CC`,
             color: themeColors.primary 
           }}>
-            <span>⭐ {movie.vote_average.toFixed(1)}</span>
+            <span>⭐ {movie.vote_avg.toFixed(1)}</span>
           </div>
         )}
         
@@ -107,14 +107,16 @@ const PlaylistMovieItem = ({ movie, onRemove }) => {
             <span className="heart-icon">{isLiked ? '♥' : '♡'}</span>
           </button>
 
-          <button 
-            className={`remove-btn ${isRemoving ? 'active' : ''}`}
-            onClick={handleRemoveClick}
-            aria-label="Remove from playlist"
-            title="Remove from playlist"
-          >
-            <span className="remove-icon">✕</span>
-          </button>
+          {canRemove && (
+            <button 
+              className={`remove-btn ${isRemoving ? 'active' : ''}`}
+              onClick={handleRemoveClick}
+              aria-label="Remove from playlist"
+              title="Remove from playlist"
+            >
+              <span className="remove-icon">✕</span>
+            </button>
+          )}
         </div>
       </div>
       <div className={`overlay ${isHovered ? 'show-overlay' : ''}`}>
