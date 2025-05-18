@@ -58,7 +58,9 @@ export const UserProvider = ({ children }) => {
         password
       });
       if (error) return { success: false, message: error.message };
+      console.log("data", data);
       setSession(data.session);
+      console.log("session", session);
       // Fetch full user profile with playlists and watchedMovies
       const userId = data.user.id;
       // Fetch user profile

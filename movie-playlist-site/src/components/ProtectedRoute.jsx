@@ -4,7 +4,7 @@ import { useUser } from '../contexts/UserContext';
 const ProtectedRoute = ({ children }) => {
   const { session, loading } = useUser();
   const location = useLocation();
-
+  
   if (loading) {
     return <div>Loading...</div>;
   }

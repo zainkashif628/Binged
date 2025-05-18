@@ -20,6 +20,7 @@ const Login = () => {
   });
 
   const handleLogin = async (e) => {
+    console.log("HEREEEEEEEEEEEE");
     e.preventDefault();
     if (hasNavigated.current) return;
     if (!email || !password) {
@@ -30,10 +31,12 @@ const Login = () => {
     setIsLoading(true);
     try {
       // 1. Sign in with Supabase Auth
+      console.log("signing in");
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
+      console.log("authData", authData);
       if (signInError || !authData.session) {
         throw new Error("Invalid email or password.");
       }
